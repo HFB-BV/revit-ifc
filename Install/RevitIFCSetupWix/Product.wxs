@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
 
-   <Product Id="A8DAC8ED-5862-475E-9ACC-7BD88E67352A" Name="Revit IFC 2021" Language="1033" Version="21.3.0.0" Manufacturer="Autodesk" UpgradeCode="D8344D14-F520-44DA-9583-9AF4BD489CF8">
+   <Product Id="242D3B07-8ED1-41A5-842B-E410D560B2E7" Name="Revit IFC 2021" Language="1033" Version="21.4.2.0" Manufacturer="Autodesk" UpgradeCode="D8344D14-F520-44DA-9583-9AF4BD489CF8">
       <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
       <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
@@ -13,7 +13,7 @@
       </UI>
       <Property Id="WIXUI_INSTALLDIR" Value ="INSTALLDIR"/>
 
-      <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)..\Program Files to Install\LICENSE.rtf"></WixVariable>
+      <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)..\..\LICENSE.rtf"></WixVariable>
       <WixVariable Id="WixUIBannerBmp" Value="$(var.ProjectDir)..\Program Files to Install\Autodesk Logo.bmp" />
       <WixVariable Id="WixUIDialogBmp" Value="$(var.ProjectDir)..\Program Files to Install\Adsk_sidebar_501x314.jpg" />
       <WixVariable Id="WixUIDefUserDefTxt" Value="$(var.ProjectDir)..\Program Files to Install\DefaultUserDefinedParameterSets.txt"></WixVariable>
@@ -136,7 +136,7 @@
             <File Id ="FILE_SteelCon_ASIFC_Sig" Name="Autodesk.SteelConnections.ASIFC.sig" Source="$(var.ProjectDir)..\Program Files to Install\Autodesk.SteelConnections.ASIFC.sig" KeyPath="yes" />
          </Component>
          <Component Id = "COMP_LICENSE_RTF" Guid="9F0851DD-3A43-4D49-AC8C-8B8D2F394A91">
-            <File Id ="FILE_LICENSE_RTF" Name="LICENSE.rtf" Source="$(var.ProjectDir)..\Program Files to Install\LICENSE.rtf" KeyPath="yes" />
+            <File Id ="FILE_LICENSE_RTF" Name="LICENSE.rtf" Source="$(var.ProjectDir)..\..\LICENSE.rtf" KeyPath="yes" />
          </Component>
          <Component Id = "COMP_DEFAULT_USERDEF_TXT" Guid="A269554D-2E77-4DA1-8942-EBF6CC297C09">
             <File Id ="FILE_DEFAULT_USERDEF_TXT" Name="DefaultUserDefinedParameterSets.txt" Source="$(var.ProjectDir)..\Program Files to Install\DefaultUserDefinedParameterSets.txt" KeyPath="yes" />
