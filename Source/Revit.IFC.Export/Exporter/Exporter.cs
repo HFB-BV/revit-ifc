@@ -99,6 +99,7 @@ namespace Revit.IFC.Export.Exporter
    public class Exporter : IExporterIFC
    {
       RevitStatusBar statusBar = null;
+      HFBExportLogger hfblogger = null;
 
       // Used for debugging tool "WriteIFCExportedElements"
       private StreamWriter m_Writer;
@@ -156,11 +157,24 @@ namespace Revit.IFC.Export.Exporter
          ExporterCacheManager.Clear();
          ExporterStateManager.Clear();
 
+         string logFileName = null;
+         try
+         {
+            logFileName = document.Title + "_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
+         }
+         catch (Exception)
+         {
+            logFileName = "NoTitle_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
+         }
+
+         hfblogger = new HFBExportLogger(@"N:\Revit\IFC Exports\IFClogs\2022", logFileName);
+
          try
          {
             IFCAnyHandleUtil.IFCStringTooLongWarn += (_1) => { document.Application.WriteJournalComment(_1, true); };
             IFCDataUtil.IFCStringTooLongWarn += (_1) => { document.Application.WriteJournalComment(_1, true); };
 
+            hfblogger.Initialize();
             BeginExport(exporterIFC, document, filterView);
 
             ParamExprListener.ResetParamExprInternalDicts();
@@ -169,6 +183,7 @@ namespace Revit.IFC.Export.Exporter
                m_ElementExporter(exporterIFC, document);
 
             EndExport(exporterIFC, document);
+            hfblogger.Close();
             WriteIFCFile(exporterIFC, document);
          }
          catch (Exception ex)
@@ -388,6 +403,7 @@ namespace Revit.IFC.Export.Exporter
          int numOfSpatialElements = spatialElementCollector.Count<Element>();
          int spatialElementCount = 1;
 
+         hfblogger.Restart();
          foreach (Element element in spatialElementCollector)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingSpatialElements, spatialElementCount, numOfSpatialElements, element.Id));
@@ -402,6 +418,7 @@ namespace Revit.IFC.Export.Exporter
             if (!SpatialElementInSectionBox(sectionBox, element))
                continue;
             ExportElement(exporterIFC, element);
+            hfblogger.Update(element);
          }
 
          SpatialElementExporter.DestroySpatialElementGeometryCalculator();
@@ -417,11 +434,13 @@ namespace Revit.IFC.Export.Exporter
          int numOfOtherElement = otherElementCollector.Count();
          IList<Element> otherElementCollListCopy = new List<Element>(otherElementCollector);
          int otherElementCollectorCount = 1;
+         hfblogger.Restart();
          foreach (Element element in otherElementCollListCopy)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingNonSpatialElements, otherElementCollectorCount, numOfOtherElement, element.Id));
             otherElementCollectorCount++;
             ExportElement(exporterIFC, element);
+            hfblogger.Update(element);
          }
       }
 
