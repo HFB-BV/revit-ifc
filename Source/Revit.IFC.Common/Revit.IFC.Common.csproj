@@ -79,6 +79,7 @@
     <Compile Include="Utility\COBieCompanyInfo.cs" />
     <Compile Include="Utility\COBieProjectInfo.cs" />
     <Compile Include="Utility\DirectoryUtil.cs" />
+    <Compile Include="Utility\HfbLogger.cs" />
     <Compile Include="Utility\IFCAnyHandleUtil.cs" />
     <Compile Include="Utility\IFCCompatibilityType.cs" />
     <Compile Include="Utility\IFCFuzzyXYZ.cs" />
