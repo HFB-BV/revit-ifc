@@ -167,7 +167,7 @@ namespace Revit.IFC.Export.Exporter
             logFileName = "NoTitle_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
          }
 
-         hfblogger = new HFBExportLogger(@"N:\Revit\IFC Exports\IFClogs\2022", logFileName);
+         hfblogger = new HFBExportLogger(document, @"N:\Revit\IFC Exports\IFClogs\2022", logFileName);
 
          try
          {
