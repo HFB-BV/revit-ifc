@@ -157,25 +157,41 @@ namespace Revit.IFC.Export.Exporter
          ExporterCacheManager.Clear();
          ExporterStateManager.Clear();
 
+         // Add the HFB element logger
          string logFileName = null;
          try
          {
-            logFileName = document.Title + "_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
+            logFileName = document.Title + "_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".csv";
          }
          catch (Exception)
          {
-            logFileName = "NoTitle_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
+            logFileName = "NoTitle_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".csv";
          }
 
-         hfblogger = new HFBExportLogger(document, @"N:\Revit\IFC Exports\IFClogs\2021", logFileName);
+
+         String logIFCElementsDir = Environment.GetEnvironmentVariable("logIFCElementsDir");
+         if (logIFCElementsDir != null && logIFCElementsDir.Length > 0)
+         {
+            try
+            {
+               string logdir = Path.GetFullPath(logIFCElementsDir);
+               if (Directory.Exists(logdir))
+               {
+                  logdir = Path.Combine(logdir, "2021");
+                  hfblogger = new HFBExportLogger(document, logdir, logFileName);
+               }
+            }
+            catch
+            {
+               // Do nothing
+            }
+         }
+            
 
          try
          {
-            hfblogger.Initialize();
-            //foreach (KeyValuePair<String, String> pair in exporterIFC.GetOptions())
-            //{
-            //   hfblogger.Print(pair.Key + ":" + pair.Value);
-            //}
+            if (hfblogger != null)
+               hfblogger.Initialize();
 
             BeginExport(exporterIFC, document, filterView);
 
@@ -185,7 +201,10 @@ namespace Revit.IFC.Export.Exporter
                m_ElementExporter(exporterIFC, document);
 
             EndExport(exporterIFC, document);
-            hfblogger.Close();
+
+            if (hfblogger != null)
+               hfblogger.Close();
+
             WriteIFCFile(exporterIFC, document);
          }
          catch (Exception ex)
@@ -403,7 +422,8 @@ namespace Revit.IFC.Export.Exporter
          int numOfSpatialElements = spatialElementCollector.Count<Element>();
          int spatialElementCount = 1;
 
-         hfblogger.Restart();
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (Element element in spatialElementCollector)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingSpatialElements, spatialElementCount, numOfSpatialElements, element.Id));
@@ -418,7 +438,8 @@ namespace Revit.IFC.Export.Exporter
             if (!SpatialElementInSectionBox(sectionBox, element))
                continue;
             ExportElement(exporterIFC, element);
-            hfblogger.Update(element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
 
          SpatialElementExporter.DestroySpatialElementGeometryCalculator();
@@ -434,13 +455,16 @@ namespace Revit.IFC.Export.Exporter
          int numOfOtherElement = otherElementCollector.Count();
          IList<Element> otherElementCollListCopy = new List<Element>(otherElementCollector);
          int otherElementCollectorCount = 1;
-         hfblogger.Restart();
+         
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (Element element in otherElementCollListCopy)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingNonSpatialElements, otherElementCollectorCount, numOfOtherElement, element.Id));
             otherElementCollectorCount++;
             ExportElement(exporterIFC, element);
-            hfblogger.Update(element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
@@ -474,12 +498,16 @@ namespace Revit.IFC.Export.Exporter
          HashSet<ElementId> railingCollection = ExporterCacheManager.RailingCache;
          int railingIndex = 1;
          int railingCollectionCount = railingCollection.Count;
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.RailingCache)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingRailings, railingIndex, railingCollectionCount, elementId));
             railingIndex++;
             Element element = document.GetElement(elementId);
             ExportElement(exporterIFC, element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
@@ -494,12 +522,16 @@ namespace Revit.IFC.Export.Exporter
          IDictionary<ElementId, HashSet<IFCAnyHandle>> fabricAreaCollection = ExporterCacheManager.FabricAreaHandleCache;
          int fabricAreaIndex = 1;
          int fabricAreaCollectionCount = fabricAreaCollection.Count;
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.FabricAreaHandleCache.Keys)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingFabricAreas, fabricAreaIndex, fabricAreaCollectionCount, elementId));
             fabricAreaIndex++;
             Element element = document.GetElement(elementId);
             ExportElement(exporterIFC, element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
@@ -513,12 +545,16 @@ namespace Revit.IFC.Export.Exporter
          HashSet<ElementId> trussCollection = ExporterCacheManager.TrussCache;
          int trussIndex = 1;
          int trussCollectionCount = trussCollection.Count;
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.TrussCache)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingTrusses, trussIndex, trussCollectionCount, elementId));
             trussIndex++;
             Element element = document.GetElement(elementId);
             ExportElement(exporterIFC, element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
@@ -532,12 +568,16 @@ namespace Revit.IFC.Export.Exporter
          HashSet<ElementId> beamSystemCollection = ExporterCacheManager.BeamSystemCache;
          int beamSystemIndex = 1;
          int beamSystemCollectionCount = beamSystemCollection.Count;
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.BeamSystemCache)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingBeamSystems, beamSystemIndex, beamSystemCollectionCount, elementId));
             beamSystemIndex++;
             Element element = document.GetElement(elementId);
             ExportElement(exporterIFC, element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
@@ -551,12 +591,16 @@ namespace Revit.IFC.Export.Exporter
          HashSet<ElementId> zoneCollection = ExporterCacheManager.ZoneCache;
          int zoneIndex = 1;
          int zoneCollectionCount = zoneCollection.Count;
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.ZoneCache)
          {
             statusBar.Set(String.Format(Resources.IFCProcessingExportZones, zoneIndex, zoneCollectionCount, elementId));
             zoneIndex++;
             Element element = document.GetElement(elementId);
             ExportElement(exporterIFC, element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
@@ -567,10 +611,14 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportAreaSchemes(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         if (hfblogger != null)
+            hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.AreaSchemeCache.Keys)
          {
             Element element = document.GetElement(elementId);
             ExportElement(exporterIFC, element);
+            if (hfblogger != null)
+               hfblogger.Update(element);
          }
       }
 
