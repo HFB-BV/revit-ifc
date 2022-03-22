@@ -73,15 +73,21 @@ namespace Revit.IFC.Common.Utility
          return ifctype;
       }
 
-      public void Update(Element element)
+      public void Log(Element element)
       {
-         // We can retrieve the elapsed time without calling Stop() first.
          int duration = (int)sw.ElapsedMilliseconds;
          string famstr = GetFamily(element);
          string ifctype = GetIFCEntityType(element);
 
-         string logstr = element.Id.ToString() + "," + duration.ToString() + "," + element.Name + "," + element.Category.Name + "," + element.GroupId.ToString() + "," + famstr + "," + ifctype;
+         string logstr = element.Id.ToString() + "," + duration.ToString() + "," + element.Name + "," +
+                         element.Category.Name + "," + element.GroupId.ToString() + "," + famstr + "," + ifctype;
+
          writer.WriteLine(logstr);
+      }
+
+      public void Update(Element element)
+      {
+         Log(element);
          sw.Restart();
       }
 
@@ -90,7 +96,6 @@ namespace Revit.IFC.Common.Utility
          writer.Close();
          fs.Dispose();
       }
-
 
    }
 }
