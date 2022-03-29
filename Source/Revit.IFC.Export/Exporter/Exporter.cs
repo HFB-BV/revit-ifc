@@ -100,6 +100,7 @@ namespace Revit.IFC.Export.Exporter
    {
       RevitStatusBar statusBar = null;
       HFBExportLogger hfblogger = null;
+      HfbDebugLogger hfblogger2 = null;
 
       // Used for debugging tool "WriteIFCExportedElements"
       private StreamWriter m_Writer;
@@ -192,6 +193,9 @@ namespace Revit.IFC.Export.Exporter
          {
             if (hfblogger != null)
                hfblogger.Initialize();
+            
+            string debuglog = "debug_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
+            hfblogger2 = new HfbDebugLogger(@"N:\Revit\IFC Exports\_logs\debuglogs", debuglog);
 
             BeginExport(exporterIFC, document, filterView);
 
@@ -201,11 +205,13 @@ namespace Revit.IFC.Export.Exporter
                m_ElementExporter(exporterIFC, document);
 
             EndExport(exporterIFC, document);
-
+            hfblogger2.Log("Finished all exports");
             if (hfblogger != null)
                hfblogger.Close();
-
+            hfblogger2.Log("Finished Closing element logger");
             WriteIFCFile(exporterIFC, document);
+            hfblogger2.Log("Finished Writing IFC file");
+            hfblogger2.Close();
          }
          catch (Exception ex)
          {
@@ -297,6 +303,7 @@ namespace Revit.IFC.Export.Exporter
             catch
             { }
          }
+         hfblogger2.Log("Finished Exporting Advance Steel Elements");
       }
 
       /// <summary>
@@ -443,6 +450,7 @@ namespace Revit.IFC.Export.Exporter
          }
 
          SpatialElementExporter.DestroySpatialElementGeometryCalculator();
+         hfblogger2.Log("Finished Exporting Spatial Elements");
       }
 
       protected void ExportNonSpatialElements(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
@@ -466,6 +474,7 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Nonspatial Elements");
       }
 
       /// <summary>
@@ -484,6 +493,7 @@ namespace Revit.IFC.Export.Exporter
             ExportAreaSchemes(exporterIFC, document);
             ExportZones(exporterIFC, document);
          }
+         hfblogger2.Log("Finished Exporting Containers");
       }
 
       /// <summary>
@@ -509,6 +519,7 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Cached Railings");
       }
 
       /// <summary>
@@ -533,6 +544,7 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Cached Fabric Areas");
       }
 
       /// <summary>
@@ -556,6 +568,7 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Trusses");
       }
 
       /// <summary>
@@ -579,6 +592,7 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Beam Systems");
       }
 
       /// <summary>
@@ -602,6 +616,7 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Zones");
       }
 
       /// <summary>
@@ -620,17 +635,20 @@ namespace Revit.IFC.Export.Exporter
             if (hfblogger != null)
                hfblogger.Update(element);
          }
+         hfblogger2.Log("Finished Exporting Area Schemes");
       }
 
       protected void ExportGrids(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
          // Export the grids
          GridExporter.Export(exporterIFC, document);
+         hfblogger2.Log("Finished Exporting Grids");
       }
 
       protected void ExportConnectors(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
          ConnectorExporter.Export(exporterIFC);
+         hfblogger2.Log("Finished Exporting Connectors");
       }
 
       /// <summary>
