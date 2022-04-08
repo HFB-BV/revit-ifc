@@ -197,18 +197,27 @@ namespace Revit.IFC.Export.Exporter
             string debuglog = "debug_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".log";
             hfblogger2 = new HfbDebugLogger(@"N:\Revit\IFC Exports\_logs\debuglogs", debuglog);
 
+            hfblogger2.Log("Started IFC export");
+
+            hfblogger2.Log("Started function BeginExport");
             BeginExport(exporterIFC, document, filterView);
+            hfblogger2.Log("Finished function BeginExport");
 
             ParamExprListener.ResetParamExprInternalDicts();
             InitializeElementExporters();
             if (m_ElementExporter != null)
                m_ElementExporter(exporterIFC, document);
 
+            hfblogger2.Log("Started function EndExport");
             EndExport(exporterIFC, document);
-            hfblogger2.Log("Finished all exports");
+            hfblogger2.Log("Finished function EndExport");
+
+            hfblogger2.Log("Started closing element logger");
             if (hfblogger != null)
                hfblogger.Close();
             hfblogger2.Log("Finished Closing element logger");
+
+            hfblogger2.Log("Started writing IFC file");
             WriteIFCFile(exporterIFC, document);
             hfblogger2.Log("Finished Writing IFC file");
             hfblogger2.Close();
@@ -278,6 +287,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="document">The Revit document.</param>
       protected void ExportAdvanceSteelElements(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Advance Steel Elements");
          // verify if Steel elements should be exported
          if (ExporterCacheManager.ExportOptionsCache.IncludeSteelElements)
          {
@@ -362,6 +372,7 @@ namespace Revit.IFC.Export.Exporter
 
       protected void ExportSpatialElements(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Spatial Elements");
          // Create IfcSite first here using the first visible TopographySurface if any, if not create a default one.
          // Site and Building need to be created first to ensure containment override to work
          FilteredElementCollector topoElementCollector = GetExportElementCollector(document, true);
@@ -455,6 +466,7 @@ namespace Revit.IFC.Export.Exporter
 
       protected void ExportNonSpatialElements(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Nonspatial Elements");
          FilteredElementCollector otherElementCollector = GetExportElementCollector(document, true);
 
          ElementFilter nonSpatialElementFilter = ElementFilteringUtil.GetNonSpatialElementFilter(document, exporterIFC);
@@ -484,6 +496,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportContainers(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Containers");
          using (ExporterStateManager.ForceElementExport forceElementExport = new ExporterStateManager.ForceElementExport())
          {
             ExportCachedRailings(exporterIFC, document);
@@ -505,6 +518,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportCachedRailings(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Cached Railings");
          HashSet<ElementId> railingCollection = ExporterCacheManager.RailingCache;
          int railingIndex = 1;
          int railingCollectionCount = railingCollection.Count;
@@ -530,6 +544,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportCachedFabricAreas(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Cached Fabric Areas");
          IDictionary<ElementId, HashSet<IFCAnyHandle>> fabricAreaCollection = ExporterCacheManager.FabricAreaHandleCache;
          int fabricAreaIndex = 1;
          int fabricAreaCollectionCount = fabricAreaCollection.Count;
@@ -554,6 +569,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportTrusses(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Trusses");
          HashSet<ElementId> trussCollection = ExporterCacheManager.TrussCache;
          int trussIndex = 1;
          int trussCollectionCount = trussCollection.Count;
@@ -578,6 +594,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportBeamSystems(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Beam Systems");
          HashSet<ElementId> beamSystemCollection = ExporterCacheManager.BeamSystemCache;
          int beamSystemIndex = 1;
          int beamSystemCollectionCount = beamSystemCollection.Count;
@@ -602,6 +619,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportZones(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Zones");
          HashSet<ElementId> zoneCollection = ExporterCacheManager.ZoneCache;
          int zoneIndex = 1;
          int zoneCollectionCount = zoneCollection.Count;
@@ -626,6 +644,7 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="exporterIFC">The exporterIFC class.</param>
       protected void ExportAreaSchemes(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Area Schemes");
          if (hfblogger != null)
             hfblogger.Restart();
          foreach (ElementId elementId in ExporterCacheManager.AreaSchemeCache.Keys)
@@ -641,12 +660,14 @@ namespace Revit.IFC.Export.Exporter
       protected void ExportGrids(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
          // Export the grids
+         hfblogger2.Log("Started Exporting Grids");
          GridExporter.Export(exporterIFC, document);
          hfblogger2.Log("Finished Exporting Grids");
       }
 
       protected void ExportConnectors(ExporterIFC exporterIFC, Autodesk.Revit.DB.Document document)
       {
+         hfblogger2.Log("Started Exporting Connectors");
          ConnectorExporter.Export(exporterIFC);
          hfblogger2.Log("Finished Exporting Connectors");
       }
@@ -1482,7 +1503,6 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="document">The document to export.</param>
       private void EndExport(ExporterIFC exporterIFC, Document document)
       {
-         hfblogger2.Log("Started function EndExport");
          IFCFile file = exporterIFC.GetFile();
          IFCAnyHandle ownerHistory = ExporterCacheManager.OwnerHistoryHandle;
 
@@ -1491,7 +1511,7 @@ namespace Revit.IFC.Export.Exporter
             // In some cases, like multi-story stairs and ramps, we may have the same Pset used for multiple levels.
             // If ifcParams is null, re-use the property set.
             ISet<string> locallyUsedGUIDs = new HashSet<string>();
-
+            hfblogger2.Log("Started relating ducts and pipes to coverings");
             // Relate Ducts and Pipes to their coverings (insulations and linings)
             foreach (ElementId ductOrPipeId in ExporterCacheManager.MEPCache.CoveredElementsCache)
             {
@@ -1523,6 +1543,7 @@ namespace Revit.IFC.Export.Exporter
                   IFCInstanceExporter.CreateRelCoversBldgElements(file, GUIDUtil.CreateGUID(), ownerHistory, null, null, ductOrPipeHandle, coveringHandles);
             }
             hfblogger2.Log("Finished relating ducts and pipes to coverings");
+            hfblogger2.Log("Started relating stair components to stairs");
 
             // Relate stair components to stairs
             foreach (KeyValuePair<ElementId, StairRampContainerInfo> stairRamp in ExporterCacheManager.StairRampContainerInfoCache)
@@ -1551,6 +1572,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished relating stair components to stairs");
+            hfblogger2.Log("Started creating default site");
 
             // create a Default site if we have latitude and longitude information.
             if (IFCAnyHandleUtil.IsNullOrHasNoValue(ExporterCacheManager.SiteHandle))
@@ -1562,6 +1584,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished creating default site");
+            hfblogger2.Log("Started basic stuff");
 
             ProjectInfo projectInfo = document.ProjectInformation;
 
@@ -1610,8 +1633,8 @@ namespace Revit.IFC.Export.Exporter
                if (projectHasBuilding)
                   ExporterCacheManager.ContainmentCache.AddRelation(projectHandle, buildingHandle);
             }
-            hfblogger2.Log("Just another logging point");
-
+            hfblogger2.Log("Finished basic stuff");
+            hfblogger2.Log("Started relating assembly elements to assemblies");
             // relate assembly elements to assemblies
             foreach (KeyValuePair<ElementId, AssemblyInstanceInfo> assemblyInfoEntry in ExporterCacheManager.AssemblyInstanceCache)
             {
@@ -1646,6 +1669,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished relating assembly elements to assemblies");
+            hfblogger2.Log("Started relating group elements to groups");
 
             // relate group elements to groups
             foreach (KeyValuePair<ElementId, GroupInfo> groupEntry in ExporterCacheManager.GroupCache)
@@ -1676,6 +1700,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished relating group elements to groups");
+            hfblogger2.Log("Started creating association with IfcBuilding and elements");
 
             IFCAnyHandle defContainerObjectPlacement = IFCAnyHandleUtil.GetObjectPlacement(siteOrbuildingHnd);
             Transform defContainerTrf = ExporterUtil.GetTotalTransformFromLocalPlacement(defContainerObjectPlacement);
@@ -1737,7 +1762,8 @@ namespace Revit.IFC.Export.Exporter
                      ownerHistory, null, null, relatedElementSetForSite, siteHandle);
                }
             }
-            hfblogger2.Log("Finished creating association 1");
+            hfblogger2.Log("Finished creating association with IfcBuilding and elements");
+            hfblogger2.Log("Started creating association with IfcBuilding and spatial elements");
 
             // create an association between the IfcBuilding and spacial elements with no other containment
             // The name "GetRelatedProducts()" is misleading; this only covers spaces.
@@ -1796,11 +1822,13 @@ namespace Revit.IFC.Export.Exporter
                   ExporterCacheManager.ContainmentCache.AddRelations(siteHandle, relatedElementSetForSite);
                }
             }
-            hfblogger2.Log("Finished creating association 2");
+            hfblogger2.Log("Finished creating association with IfcBuilding and spatial elements");
+            hfblogger2.Log("Started relating levels and products");
 
             // relate levels and products.
             RelateLevels(exporterIFC, document);
             hfblogger2.Log("Finished relating levels and products");
+            hfblogger2.Log("Started relating objects in containment cache");
 
             // relate objects in containment cache.
             foreach (KeyValuePair<IFCAnyHandle, ICollection<IFCAnyHandle>> container in ExporterCacheManager.ContainmentCache)
@@ -1812,6 +1840,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished relating objects in containment cache");
+            hfblogger2.Log("Started adding custom property sets");
 
             // These elements are created internally, but we allow custom property sets for them.  Create them here.
             using (ProductWrapper productWrapper = ProductWrapper.Create(exporterIFC, true))
@@ -1821,7 +1850,8 @@ namespace Revit.IFC.Export.Exporter
                if (projectInfo != null)
                   ExporterUtil.ExportRelatedProperties(exporterIFC, projectInfo, productWrapper);
             }
-            hfblogger2.Log("Adding custom property sets");
+            hfblogger2.Log("Finished adding custom property sets");
+            hfblogger2.Log("Started creating material layer associations");
 
             // create material layer associations
             foreach (IFCAnyHandle materialSetLayerUsageHnd in ExporterCacheManager.MaterialLayerRelationsCache.Keys)
@@ -1835,6 +1865,7 @@ namespace Revit.IFC.Export.Exporter
                    materialSetLayerUsageHnd);
             }
             hfblogger2.Log("Finished creating material layer associations");
+            hfblogger2.Log("Started creating material associations");
 
             // create material associations
             foreach (IFCAnyHandle materialHnd in ExporterCacheManager.MaterialRelationsCache.Keys)
@@ -1850,6 +1881,7 @@ namespace Revit.IFC.Export.Exporter
                    null, null, materialRelationsHandles, materialHnd);
             }
             hfblogger2.Log("Finished creating material associations");
+            hfblogger2.Log("Started creating type relations");
 
             // create type relations
             foreach (IFCAnyHandle typeObj in ExporterCacheManager.TypeRelationsCache.Keys)
@@ -1865,6 +1897,7 @@ namespace Revit.IFC.Export.Exporter
                    null, null, typeRelCache, typeObj);
             }
             hfblogger2.Log("Finished creating type relations");
+            hfblogger2.Log("Started creating property type relations");
 
             // create type property relations
             foreach (TypePropertyInfo typePropertyInfo in ExporterCacheManager.TypePropertyInfoCache.Values)
@@ -1891,6 +1924,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished creating property type relations");
+            hfblogger2.Log("Started creating space boundaries");
 
             // create space boundaries
             foreach (SpaceBoundary boundary in ExporterCacheManager.SpaceBoundaryCache)
@@ -1898,6 +1932,7 @@ namespace Revit.IFC.Export.Exporter
                SpatialElementExporter.ProcessIFCSpaceBoundary(exporterIFC, boundary, file);
             }
             hfblogger2.Log("Finished creating space boundaries");
+            hfblogger2.Log("Started creating wall/wall connectivity objects");
 
             // create wall/wall connectivity objects
             if (ExporterCacheManager.WallConnectionDataCache.Count > 0 && !ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView)
@@ -1928,6 +1963,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished creating wall/wall connectivity objects");
+            hfblogger2.Log("Started creating zones");
 
             // create Zones and groups of Zones.
             {
@@ -1992,6 +2028,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished creating zones");
+            hfblogger2.Log("Started creating space occupants");
 
             // create Space Occupants
             {
@@ -2024,6 +2061,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished creating space occupants");
+            hfblogger2.Log("Started creating systems");
 
             // Create systems.
             using (ProductWrapper productWrapper = ProductWrapper.Create(exporterIFC, true))
@@ -2070,7 +2108,7 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished creating systems");
-
+            hfblogger2.Log("Started doing other stuff");
             using (ProductWrapper productWrapper = ProductWrapper.Create(exporterIFC, true))
             {
                foreach (KeyValuePair<ElementId, ISet<IFCAnyHandle>> entries in ExporterCacheManager.SystemsCache.ElectricalSystemsCache)
@@ -2133,11 +2171,13 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished doing other stuff");
+            hfblogger2.Log("Started creating presentation layer assignments");
 
             // Add presentation layer assignments - this is in addition to those created internally.
             // Any representation in this list will override any internal assignment.
             CreatePresentationLayerAssignments(exporterIFC, file);
-
+            hfblogger2.Log("Finished creating presentation layer assignments");
+            hfblogger2.Log("Started adding door/window openings");
             // Add door/window openings.
             ExporterCacheManager.DoorWindowDelayedOpeningCreatorCache.ExecuteCreators(exporterIFC, document);
 
@@ -2150,13 +2190,15 @@ namespace Revit.IFC.Export.Exporter
                }
             }
             hfblogger2.Log("Finished adding door/window openings");
+            hfblogger2.Log("Started deleting handles marked for removal");
 
             // Delete handles that are marked for removal
             foreach (IFCAnyHandle handleToDel in ExporterCacheManager.HandleToDeleteCache)
             {
                handleToDel.Delete();
             }
-            hfblogger2.Log("Finished deleting handles");
+            hfblogger2.Log("Finished deleting handles marked for removal");
+            hfblogger2.Log("Started modifying elements with GUID values");
 
             // Potentially modify elements with GUID values.
             if (ExporterCacheManager.GUIDsToStoreCache.Count > 0 && !ExporterCacheManager.ExportOptionsCache.ExportingLink)
@@ -2174,13 +2216,12 @@ namespace Revit.IFC.Export.Exporter
                   st.Commit();
                }
             }
-            hfblogger2.Log("Finished modifying elements with guid values");
+            hfblogger2.Log("Finished modifying elements with GUID values");
 
             // Allow native code to remove some unused handles and clear internal caches.
             ExporterIFCUtils.EndExportInternal(exporterIFC);
             transaction.Commit();
          }
-         hfblogger2.Log("Completed function EndExport");
       }
 
       /// <summary>
