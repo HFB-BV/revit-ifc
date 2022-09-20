@@ -1333,11 +1333,20 @@ namespace Revit.IFC.Export.Exporter
          IFCAnyHandle spaceHnd, IDictionary<string, IFCAnyHandle> classificationHandles,
          string name, string location)
       {
-         if (classificationHandles?.TryGetValue(name, out IFCAnyHandle handle) ?? false)
-         {
-            if (!IFCAnyHandleUtil.IsNullOrHasNoValue(handle))
-               return;
+         if (classificationHandles != null) {
+            if (classificationHandles.TryGetValue(name, out IFCAnyHandle handle))
+            {
+               if (!IFCAnyHandleUtil.IsNullOrHasNoValue(handle))
+                  return;
+            }
          }
+
+         // Original Autodesk Code; I have no clue how they got this to compile.
+         //if (classificationHandles.TryGetValue(name, out IFCAnyHandle handle) ?? false)
+         //{
+         //   if (!IFCAnyHandleUtil.IsNullOrHasNoValue(handle))
+         //      return;
+         //}
 
          string itemReference;
          if (ParameterUtil.GetStringValueFromElementOrSymbol(element, name + " Reference", out itemReference) != null)
