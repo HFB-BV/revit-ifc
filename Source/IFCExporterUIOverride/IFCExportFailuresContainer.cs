@@ -3,7 +3,7 @@ using Autodesk.Revit.DB;
 
 namespace BIM.IFC.Export.UI
 {
-   class IFCExportFailuresContainer
+   public class IFCExportFailuresContainer
    {
       // Reasons we can't export:
       // 1. The path for the linked instance doesn't exist.

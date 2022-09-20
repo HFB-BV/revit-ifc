@@ -725,9 +725,9 @@ namespace BIM.IFC.Export.UI
       }
 
       // Static version without UI feedback that can be called by scripts
-      public static void ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
+      public static IFCExportFailuresContainer ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
       {
-         IFCExportFailuresContainer errContainer = PerformLinkedExports(document, folderpath, fileName, linksGUIDsCache, exportOptions);
+         return PerformLinkedExports(document, folderpath, fileName, linksGUIDsCache, exportOptions);
       }
 
       public static string SerializeXYZ(XYZ value)
