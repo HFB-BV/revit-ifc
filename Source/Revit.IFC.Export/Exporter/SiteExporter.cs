@@ -177,7 +177,10 @@ namespace Revit.IFC.Export.Exporter
                double latitudeInDeg = projLocation.GetSiteLocation().Latitude * scaleToDegrees;
                double longitudeInDeg = projLocation.GetSiteLocation().Longitude * scaleToDegrees;
 
-               ExporterUtil.GetSafeProjectPositionElevation(doc, out unscaledElevation);
+               if (CoordReferenceInfo.MainModelGeoRefOrWCS != null)
+               {
+                  unscaledElevation = CoordReferenceInfo.MainModelGeoRefOrWCS.Origin.Z;
+               }
 
                int latDeg = ((int)latitudeInDeg); latitudeInDeg -= latDeg; latitudeInDeg *= 60;
                int latMin = ((int)latitudeInDeg); latitudeInDeg -= latMin; latitudeInDeg *= 60;
@@ -203,25 +206,17 @@ namespace Revit.IFC.Export.Exporter
             // Get elevation for site.
             IFCAnyHandle relativePlacement = null;
             IFCAnyHandle localPlacement = null;
-            if (ExporterCacheManager.ExportOptionsCache.ExportingLink)
-            {
-               relativePlacement = ExporterUtil.CreateAxis2Placement3D(file, UnitUtil.ScaleLength(ExporterCacheManager.HostRvtFileWCS.Origin), ExporterCacheManager.HostRvtFileWCS.BasisZ, ExporterCacheManager.HostRvtFileWCS.BasisX);
-               localPlacement = IFCInstanceExporter.CreateLocalPlacement(file, null, relativePlacement);
-            }
-            else
+            if (!ExporterCacheManager.ExportOptionsCache.ExportingLink)
             {
                if (ExporterCacheManager.ExportOptionsCache.IncludeSiteElevation)
                   unscaledElevation = 0.0;
-               Transform wcs = GeometryUtil.GetWCS(doc, unscaledElevation);
-               if (wcs != null && !wcs.IsIdentity)
+               Transform siteTrf = GeometryUtil.GetSiteLocalPlacement(doc);
+               if (siteTrf != null && !siteTrf.IsIdentity)
                {
-                  relativePlacement = ExporterUtil.CreateAxis2Placement3D(file, wcs.Origin, wcs.BasisZ, wcs.BasisX);
+                  relativePlacement = ExporterUtil.CreateAxis2Placement3D(file, UnitUtil.ScaleLength(siteTrf.Origin), siteTrf.BasisZ, siteTrf.BasisX);
                   localPlacement = IFCInstanceExporter.CreateLocalPlacement(file, null, relativePlacement);
-                  ExporterCacheManager.HostRvtFileWCS = wcs;
-                  ExporterCacheManager.HostRvtFileWCS.Origin = UnitUtil.UnscaleLength(ExporterCacheManager.HostRvtFileWCS.Origin);
+                  CoordReferenceInfo.MainModelCoordReferenceOffset = siteTrf;
                }
-               else
-                  ExporterCacheManager.HostRvtFileWCS = Transform.Identity;
             }
 
             if (IFCAnyHandleUtil.IsNullOrHasNoValue(relativePlacement))

@@ -6,14 +6,14 @@ using System.Reflection;
 [assembly: AssemblyTitle("IFC Import for Revit")]
 [assembly: AssemblyDescription("IFC Exporter for Revit Project")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Autodesk, Inc.")]
+[assembly: AssemblyCompany("Autodesk")]
 [assembly: AssemblyProduct("Autodesk.IFC.Export.UI")]
 [assembly: AssemblyCopyright("© 2012-2021 Autodesk, Inc. All rights reserved.")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
-[assembly: AssemblyVersion("22.3.0.0")]
-[assembly: AssemblyFileVersion("22.3.0.0")]
+[assembly: AssemblyVersion("22.5.1.0")]
+[assembly: AssemblyFileVersion("22.5.1.0")]
 #endif
 
 #region Using directives

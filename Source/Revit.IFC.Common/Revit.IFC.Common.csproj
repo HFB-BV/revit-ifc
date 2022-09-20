@@ -50,14 +50,14 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <DefineConstants>TRACE;IFC_OPENSOURCE</DefineConstants>
+    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="RevitAPI, Version=22.0.0.0, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
+    <Reference Include="RevitAPI">
       <HintPath>C:\Program Files\Autodesk\Revit 2022\RevitAPI.dll</HintPath>
     </Reference>
-    <Reference Include="RevitAPIIFC, Version=22.0.0.0, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
+    <Reference Include="RevitAPIIFC">
       <HintPath>C:\Program Files\Autodesk\Revit 2022\RevitAPIIFC.dll</HintPath>
     </Reference>
     <Reference Include="System" />
@@ -83,6 +83,7 @@
     <AppDesigner Include="Properties\" />
     <Compile Include="Utility\COBieCompanyInfo.cs" />
     <Compile Include="Utility\COBieProjectInfo.cs" />
+    <Compile Include="Utility\CoordReferenceInfo.cs" />
     <Compile Include="Utility\DirectoryUtil.cs" />
     <Compile Include="Utility\HfbLogger.cs" />
     <Compile Include="Utility\IFCAnyHandleUtil.cs" />

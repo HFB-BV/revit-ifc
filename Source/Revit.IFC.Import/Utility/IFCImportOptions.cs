@@ -23,6 +23,7 @@ using System.Diagnostics;
 using System.IO;
 using Autodesk.Revit.DB.IFC;
 using Revit.IFC.Common.Utility;
+using Revit.IFC.Import.Core;
 
 namespace Revit.IFC.Import.Utility
 {
@@ -133,6 +134,12 @@ namespace Revit.IFC.Import.Utility
       /// are called containers.
       /// </summary>
       public bool CreateDuplicateContainerGeometry { get; protected set; } = true;
+
+      /// <summary>
+      /// If true, process the HasAssignments INVERSE attribute.  If false, ignore.
+      /// This is necessary because the default IFC2x3_TC1 EXPRESS schema file is (incorrectly) missing this inverse attribute.
+      /// </summary>
+      public bool AllowUseHasAssignments { get; set; } = true;
 
       /// <summary>
       /// If this value is false, then, if we find an already created Revit file corresponding to the IFC file,

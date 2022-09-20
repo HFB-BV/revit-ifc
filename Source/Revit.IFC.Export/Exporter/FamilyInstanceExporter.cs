@@ -345,7 +345,7 @@ namespace Revit.IFC.Export.Exporter
             return null;
 
          if (guid != null)
-            ExporterUtil.SetGlobalId(typeStyle, guid);
+            ExporterUtil.SetGlobalId(typeStyle, guid, familyInstance);
 
          typeInfo.Style = typeStyle;
 
@@ -755,7 +755,16 @@ namespace Revit.IFC.Export.Exporter
                               curve = curve.CreateTransformed(doorWindowTrf.Multiply(flipTrf));
                            }
 
-                           IFCAnyHandle curveHnd = GeometryUtil.CreatePolyCurveFromCurve(exporterIFC, curve);
+                           IFCAnyHandle curveHnd;
+                           try
+                           {
+                              curveHnd = GeometryUtil.CreatePolyCurveFromCurve(exporterIFC, curve);
+                           }
+                           catch
+                           {
+                              curveHnd = GeometryUtil.OutdatedCreatePolyCurveFromCurve(exporterIFC, curve);
+                           }
+
                            if (curveSet == null)
                               curveSet = new HashSet<IFCAnyHandle>();
                            if (!IFCAnyHandleUtil.IsNullOrHasNoValue(curveHnd))

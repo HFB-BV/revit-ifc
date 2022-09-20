@@ -10,7 +10,7 @@ using System.Windows;
 [assembly: AssemblyTitle("RevitIFCTools")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Autodesk Inc.")]
+[assembly: AssemblyCompany("Autodesk")]
 [assembly: AssemblyProduct("RevitIFCTools")]
 [assembly: AssemblyCopyright("Copyright ©  2012-2021")]
 [assembly: AssemblyTrademark("")]
@@ -51,5 +51,5 @@ using System.Windows;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("22.3.0.0")]
-[assembly: AssemblyFileVersion("22.3.0.0")]
+[assembly: AssemblyVersion("22.5.1.0")]
+[assembly: AssemblyFileVersion("22.5.1.0")]
