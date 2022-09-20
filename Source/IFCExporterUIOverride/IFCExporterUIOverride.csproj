@@ -97,6 +97,7 @@
     <Compile Include="COBieProjectInfoTab.xaml.cs">
       <DependentUpon>COBieProjectInfoTab.xaml</DependentUpon>
     </Compile>
+    <Compile Include="IFCExportFailuresContainer.cs" />
     <Compile Include="IFCAddressInformationUI.xaml.cs">
       <DependentUpon>IFCAddressInformationUI.xaml</DependentUpon>
     </Compile>
