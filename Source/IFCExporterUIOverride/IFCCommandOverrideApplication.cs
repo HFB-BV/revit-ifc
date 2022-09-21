@@ -396,12 +396,12 @@ namespace BIM.IFC.Export.UI
             messageString += string.Format(formatString, ElementIdListToString(items));
       }
 
-      public void ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
+      public static IFCExportFailuresContainer PerformLinkedExports(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
       {
          // get the extension
          int index = fileName.LastIndexOf('.');
          if (index <= 0)
-            return;
+            return null;
          string sExtension = fileName.Substring(index);
          fileName = fileName.Substring(0, index);
 
@@ -469,17 +469,7 @@ namespace BIM.IFC.Export.UI
 
          // get the link instances
          // We will keep track of the instances we can't export.
-         // Reasons we can't export:
-         // 1. The path for the linked instance doesn't exist.
-         // 2. Couldn't create a temporary document for exporting the linked instance.
-         // 3. The document for the linked instance can't be found.
-         // 4. The linked instance is mirrored, non-conformal, or scaled.
-         IList<string> pathDoesntExist = new List<string>();
-         IList<string> noTempDoc = new List<string>();
-         IList<ElementId> cantFindDoc = new List<ElementId>();
-         IList<ElementId> nonConformalInst = new List<ElementId>();
-         IList<ElementId> scaledInst = new List<ElementId>();
-         IList<ElementId> instHasReflection = new List<ElementId>();
+         IFCExportFailuresContainer errContainer = new IFCExportFailuresContainer();
 
          foreach (String linkPathName in rvtLinkNamesToInstancesDict.Keys)
          {
@@ -502,7 +492,7 @@ namespace BIM.IFC.Export.UI
             File.Copy(linkPathName, linkPathNameCopy);
             if (!File.Exists(linkPathNameCopy))
             {
-               pathDoesntExist.Add(linkPathName);
+               errContainer.pathDoesntExist.Add(linkPathName);
                continue;
             }
 
@@ -524,7 +514,7 @@ namespace BIM.IFC.Export.UI
 
             if (documentCopy == null)
             {
-               noTempDoc.Add(linkPathName);
+               errContainer.noTempDoc.Add(linkPathName);
                continue;
             }
 
@@ -548,7 +538,7 @@ namespace BIM.IFC.Export.UI
                Document linkDocument = currRvtLinkInstance.GetLinkDocument();
                if (linkDocument == null)
                {
-                  cantFindDoc.Add(currRvtLinkInstance.Id);
+                  errContainer.cantFindDoc.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
@@ -558,19 +548,19 @@ namespace BIM.IFC.Export.UI
                // We can't handle non-conformal, scaled, or mirrored transforms.
                if (!tr.IsConformal)
                {
-                  nonConformalInst.Add(currRvtLinkInstance.Id);
+                  errContainer.nonConformalInst.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
                if (tr.HasReflection)
                {
-                  instHasReflection.Add(currRvtLinkInstance.Id);
+                  errContainer.instHasReflection.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
                if (!MathUtil.IsAlmostEqual(tr.Determinant, 1.0))
                {
-                  scaledInst.Add(currRvtLinkInstance.Id);
+                  errContainer.scaledInst.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
@@ -643,6 +633,7 @@ namespace BIM.IFC.Export.UI
             transaction.SetFailureHandlingOptions(failureOptions);
 
             // export
+            String path_;
             try
             {
                int numLinkInstancesToExport = linkFileNames.Count;
@@ -662,7 +653,14 @@ namespace BIM.IFC.Export.UI
                }
 
                // Pass in the first value; the rest will  be in the options.
-               String path_ = Path.GetDirectoryName(linkFileNames[0]);
+               if (folderpath == "")
+               {
+                  path_ = Path.GetDirectoryName(linkFileNames[0]);
+               }
+               else
+               {
+                  path_ = folderpath;
+               }
                String fileName_ = Path.GetFileName(linkFileNames[0]);
                bool result = documentCopy.Export(path_, fileName_, exportOptions); // pass in the options here
             }
@@ -684,31 +682,49 @@ namespace BIM.IFC.Export.UI
             catch
             {
             }
+         }
+         return errContainer;
+      }
 
-            // Show user errors, if any.
-            int numBadInstances = pathDoesntExist.Count + noTempDoc.Count + cantFindDoc.Count + nonConformalInst.Count
-                + scaledInst.Count + instHasReflection.Count;
-            if (numBadInstances > 0)
+      private void ShowExportErrors(IFCExportFailuresContainer errContainer)
+      {
+         int numBadInstances = errContainer.GetNumBadInstances();
+         if (numBadInstances > 0)
+         {
+            using (TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExport))
             {
-               using (TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExport))
-               {
-                  taskDialog.MainInstruction = string.Format(Properties.Resources.LinkInstanceExportErrorMain, numBadInstances);
-                  taskDialog.MainIcon = TaskDialogIcon.TaskDialogIconWarning;
-                  taskDialog.TitleAutoPrefix = false;
+               taskDialog.MainInstruction = string.Format(Properties.Resources.LinkInstanceExportErrorMain, numBadInstances);
+               taskDialog.MainIcon = TaskDialogIcon.TaskDialogIconWarning;
+               taskDialog.TitleAutoPrefix = false;
 
-                  string expandedContent = "";
-                  AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportErrorPath, pathDoesntExist);
-                  AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantCreateDoc, noTempDoc);
-                  AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantFindDoc, cantFindDoc);
-                  AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportNonConformal, nonConformalInst);
-                  AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportScaled, scaledInst);
-                  AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportHasReflection, instHasReflection);
+               string expandedContent = "";
+               AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportErrorPath, errContainer.pathDoesntExist);
+               AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantCreateDoc, errContainer.noTempDoc);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantFindDoc, errContainer.cantFindDoc);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportNonConformal, errContainer.nonConformalInst);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportScaled, errContainer.scaledInst);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportHasReflection, errContainer.instHasReflection);
 
-                  taskDialog.ExpandedContent = expandedContent;
-                  TaskDialogResult result = taskDialog.Show();
-               }
+               taskDialog.ExpandedContent = expandedContent;
+               TaskDialogResult result = taskDialog.Show();
             }
          }
+      }
+
+      public void ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
+      {
+         IFCExportFailuresContainer errContainer = PerformLinkedExports(document, "", fileName, linksGUIDsCache, exportOptions);
+         if (errContainer != null)
+         {
+            // Show user errors, if any.
+            ShowExportErrors(errContainer);
+         }
+      }
+
+      // Static version without UI feedback that can be called by scripts
+      public static IFCExportFailuresContainer ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
+      {
+         return PerformLinkedExports(document, folderpath, fileName, linksGUIDsCache, exportOptions);
       }
 
       public static string SerializeXYZ(XYZ value)

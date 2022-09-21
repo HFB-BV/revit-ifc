@@ -69,6 +69,7 @@
       <DependentUpon>IFCClassificationUI.xaml</DependentUpon>
     </Compile>
     <Compile Include="IFCExchangeRequirements.cs" />
+    <Compile Include="IFCExportFailuresContainer.cs" />
     <Compile Include="IFCFileHeaderInformationUI.xaml.cs">
       <DependentUpon>IFCFileHeaderInformationUI.xaml</DependentUpon>
     </Compile>
