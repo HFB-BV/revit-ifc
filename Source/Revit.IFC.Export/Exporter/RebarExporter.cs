@@ -70,7 +70,7 @@ namespace Revit.IFC.Export.Exporter
          string guid, ProductWrapper productWrapper,
          ISet<IFCAnyHandle> createdRebarHandles)
       {
-         Common.Enums.IFCEntityType elementClassTypeEnum = Common.Enums.IFCEntityType.IfcGroup;
+         IFCEntityType elementClassTypeEnum = IFCEntityType.IfcGroup;
          if (!ExporterCacheManager.ExportOptionsCache.IsElementInExcludeList(elementClassTypeEnum))
          {
             IFCFile file = exporterIFC.GetFile();
@@ -87,8 +87,10 @@ namespace Revit.IFC.Export.Exporter
                IFCExportInfoPair exportInfo = new IFCExportInfoPair(elementClassTypeEnum);
                productWrapper.AddElement(element, rebarGroup, exportInfo);
 
-               IFCInstanceExporter.CreateRelAssignsToGroup(file, GUIDUtil.CreateGUID(), ownerHistory,
-                   null, null, createdRebarHandles, null, rebarGroup);
+               string groupGuid = GUIDUtil.GenerateIFCGuidFrom(
+                  GUIDUtil.CreateGUIDString(IFCEntityType.IfcRelAssignsToGroup, rebarGroup));
+               IFCInstanceExporter.CreateRelAssignsToGroup(file, groupGuid, ownerHistory,
+                  null, null, createdRebarHandles, null, rebarGroup);
                tr.Commit();
             }
          }
@@ -146,7 +148,7 @@ namespace Revit.IFC.Export.Exporter
                ISet<DelayedProductWrapper> newlyCreatedRebars = ExportRebar(exporterIFC, rebarContainerItem, rebarContainer, itemIndex, productWrapper);
                if (newlyCreatedRebars != null)
                {
-                  itemIndex += createdRebars.Count;
+                  itemIndex += newlyCreatedRebars.Count;
                   createdRebars.UnionWith(newlyCreatedRebars);
                }
             }
@@ -166,7 +168,7 @@ namespace Revit.IFC.Export.Exporter
          // 3. IfcAssemblies do have level assignment, so individual components can't be directly
          //    contained in a building story.   This does mean that rebars in assemblies may
          //    be associated with the wrong level, but that is an IFC limitation.
-         if (createdRebars != null && createdRebars.Count != 0)
+         if ((createdRebars?.Count ?? 0) != 0)
          {
             // Only one created element can have the consistent GUID of the main element.
             // This will be either the first created assembly or the first rebar element.
@@ -195,8 +197,11 @@ namespace Revit.IFC.Export.Exporter
                currentRebarSet.Add(delayedProductWrapper);
             }
 
-            foreach (KeyValuePair<ElementId, ISet<DelayedProductWrapper>> relatedToAssembly in relatedRebar)
+            int numGroups = relatedRebar.Count;
+            for (int ii = 0; ii < numGroups; ii++)
             {
+               KeyValuePair<ElementId, ISet<DelayedProductWrapper>> relatedToAssembly = relatedRebar.ElementAt(ii);
+
                // Ignore buckets with no items in them.
                if (relatedToAssembly.Value.Count == 0)
                   continue;
@@ -223,7 +228,8 @@ namespace Revit.IFC.Export.Exporter
                else if (createdRebarHandles.Count > 1)
                {
                   // Check the intended IFC entity or type name is in the exclude list specified in the UI
-                  string rebarGUID = (guid != null) ? guid : GUIDUtil.CreateGUID();
+                  string rebarGUID = guid ?? GUIDUtil.GenerateIFCGuidFrom(
+                     GUIDUtil.CreateGUIDString(element, "Rebar Group" + ii.ToString()));
                   CreateRebarGroup(exporterIFC, element, rebarGUID, productWrapper, createdRebarHandles);
                   guid = null;
                }
@@ -238,24 +244,84 @@ namespace Revit.IFC.Export.Exporter
    
       private static IFCReinforcingBarRole GetReinforcingBarRole(string role)
       {
-         if (String.IsNullOrWhiteSpace(role))
+         if (string.IsNullOrWhiteSpace(role))
             return IFCReinforcingBarRole.NotDefined;
 
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Main"))
-            return IFCReinforcingBarRole.Main;
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Shear"))
-            return IFCReinforcingBarRole.Shear;
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Ligature"))
-            return IFCReinforcingBarRole.Ligature;
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Stud"))
-            return IFCReinforcingBarRole.Stud;
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Punching"))
-            return IFCReinforcingBarRole.Punching;
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Edge"))
-            return IFCReinforcingBarRole.Edge;
-         if (NamingUtil.IsEqualIgnoringCaseSpacesAndUnderscores(role, "Ring"))
-            return IFCReinforcingBarRole.Ring;
-         return IFCReinforcingBarRole.UserDefined;
+         IFCReinforcingBarRole barRole;
+         if (Enum.TryParse(role, true, out barRole))
+            return barRole;
+
+         return IFCReinforcingBarRole.NotDefined;
+      }
+
+      /// <summary>
+      /// Exports an element as building element proxy.
+      /// </summary>
+      /// <remarks>
+      /// This function is called from the Export function, but can also be called directly if you do not
+      /// want CreateInternalPropertySets to be called.
+      /// </remarks>
+      /// <param name="exporterIFC">The ExporterIFC object.</param>
+      /// <param name="element">The element.</param>
+      /// <param name="geometryElement">The geometry element.</param>
+      /// <param name="productWrapper">The ProductWrapper.</param>
+      /// <returns>The handle if created, null otherwise.</returns>
+      private static IFCAnyHandle ExportRebarAsProxy(ExporterIFC exporterIFC, Element element,
+          GeometryElement geometryElement, ProductWrapper productWrapper, IFCExportInfoPair exportType = null)
+      {
+         if (element == null || geometryElement == null)
+            return null;
+
+         if (exportType == null)
+         {
+            exportType = new IFCExportInfoPair(IFCEntityType.IfcBuildingElementProxy, IFCEntityType.IfcBuildingElementProxyType, "NOTDEFINED");
+         }
+
+         // Check the intended IFC entity or type name is in the exclude list specified in the UI
+         Common.Enums.IFCEntityType elementClassTypeEnum = Common.Enums.IFCEntityType.IfcBuildingElementProxy;
+         if (ExporterCacheManager.ExportOptionsCache.IsElementInExcludeList(elementClassTypeEnum))
+            return null;
+
+         IFCFile file = exporterIFC.GetFile();
+         IFCAnyHandle buildingElementProxy = null;
+         using (IFCTransaction tr = new IFCTransaction(file))
+         {
+            // Check for containment override
+            IFCAnyHandle overrideContainerHnd = null;
+            ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
+
+            using (PlacementSetter placementSetter = PlacementSetter.Create(exporterIFC, element, null, null, overrideContainerId, overrideContainerHnd))
+            {
+               using (IFCExportBodyParams ecData = new IFCExportBodyParams())
+               {
+                  ecData.SetLocalPlacement(placementSetter.LocalPlacement);
+
+                  ElementId categoryId = CategoryUtil.GetSafeCategoryId(element);
+
+                  BodyExporterOptions bodyExporterOptions = new BodyExporterOptions(true, ExportOptionsCache.ExportTessellationLevel.ExtraLow);
+                  IFCAnyHandle representation = RepresentationUtil.CreateAppropriateProductDefinitionShape(exporterIFC, element,
+                      categoryId, geometryElement, bodyExporterOptions, null, ecData, true);
+
+                  if (IFCAnyHandleUtil.IsNullOrHasNoValue(representation))
+                  {
+                     ecData.ClearOpenings();
+                     return null;
+                  }
+
+                  string guid = GUIDUtil.CreateGUID(element);
+                  IFCAnyHandle ownerHistory = ExporterCacheManager.OwnerHistoryHandle;
+                  IFCAnyHandle localPlacement = ecData.GetLocalPlacement();
+
+                  buildingElementProxy = IFCInstanceExporter.CreateBuildingElementProxy(exporterIFC, element, guid,
+                      ownerHistory, localPlacement, representation, exportType.ValidatedPredefinedType);
+
+                  productWrapper.AddElement(element, buildingElementProxy, placementSetter.LevelInfo, ecData, true, exportType);
+               }
+               tr.Commit();
+            }
+         }
+
+         return buildingElementProxy;
       }
 
       /// <summary>
@@ -285,13 +351,49 @@ namespace Revit.IFC.Export.Exporter
                Rebar rebar = rebarElement as Rebar;
                GeometryElement rebarGeometry = rebar.GetFullGeometryForView(ExporterCacheManager.ExportOptionsCache.FilterViewForExport);
                if (rebarGeometry != null)
-                  rebarEntity = ProxyElementExporter.ExportBuildingElementProxy(exporterIFC, rebarElement, rebarGeometry, productWrapper);
+                  rebarEntity = ExportRebarAsProxy(exporterIFC, rebarElement, rebarGeometry, productWrapper);
 
                cannotExportRebar = IFCAnyHandleUtil.IsNullOrHasNoValue(rebarEntity);
             }
          }
 
          return rebarEntity;
+      }
+
+      private static Curve ApplyNonConformalTransformIfPossible(Curve baseCurve, Transform transform)
+      {
+         if (!(baseCurve?.IsBound ?? false) || transform == null)
+            return null;
+
+         Line baseLine = baseCurve as Line;
+         if (baseLine != null)
+         {
+            XYZ newStartPoint = transform.OfPoint(baseLine.GetEndPoint(0));
+            XYZ newEndPoint = transform.OfPoint(baseLine.GetEndPoint(1));
+
+            return Line.CreateBound(newStartPoint, newEndPoint);
+         }
+
+         Arc baseArc = baseCurve as Arc;
+         if (baseArc != null)
+         {
+            // Strictly speaking, the non-conformal transform of an arc is an ellipse.
+            // However, this method is intended for very slightly non-conformal transforms,
+            // and an arc that is within a small tolerance of the "real" ellipse is more
+            // useful (and accurate to intent) than an ellipse.
+            XYZ newStartPoint = transform.OfPoint(baseArc.GetEndPoint(0));
+            XYZ newEndPoint = transform.OfPoint(baseArc.GetEndPoint(1));
+
+            double midParameter = (baseArc.GetEndParameter(0) + baseArc.GetEndParameter(1)) / 2.0;
+            XYZ newPointOnArc = transform.OfPoint(baseArc.Evaluate(midParameter, false));
+
+            return Arc.Create(newStartPoint, newEndPoint, newPointOnArc);
+         }
+
+         // At the moment, rebar segments can only be lines or arcs, so no need to worry
+         // about other cases.
+
+         return null;
       }
 
       /// <summary>
@@ -306,7 +408,7 @@ namespace Revit.IFC.Export.Exporter
       private static ISet<DelayedProductWrapper> ExportRebar(ExporterIFC exporterIFC, object rebarItem, Element rebarElement, int itemIndex, ProductWrapper productWrapper)
       {
          // Check the intended IFC entity or type name is in the exclude list specified in the UI
-         Common.Enums.IFCEntityType elementClassTypeEnum = Common.Enums.IFCEntityType.IfcReinforcingBar;
+         IFCEntityType elementClassTypeEnum = IFCEntityType.IfcReinforcingBar;
          if (ExporterCacheManager.ExportOptionsCache.IsElementInExcludeList(elementClassTypeEnum))
             return null;
 
@@ -352,7 +454,10 @@ namespace Revit.IFC.Export.Exporter
 
                string steelGrade = NamingUtil.GetOverrideStringValue(rebarElement, "SteelGrade", null);
 
-               // Allow use of IFC2x3 or IFC4 naming.
+               Element rebarElementType = rebarElement.Document.GetElement(rebarElement.GetTypeId());
+
+               // Note that "BarRole" is now obsoleted by the built-in IFC_EXPORT_PREDEFINEDTYPE
+               // parameter.  But we haven't done an upgrade for this, so we will still check it.
                string predefinedType = NamingUtil.GetOverrideStringValue(rebarElement, "BarRole", null);
                if (string.IsNullOrWhiteSpace(predefinedType))
                   predefinedType = NamingUtil.GetOverrideStringValue(rebarElement, "PredefinedType", null);
@@ -390,7 +495,7 @@ namespace Revit.IFC.Export.Exporter
                   string rebarNameFormated = origRebarName;
                   if (rebar != null && rebar.CanBeMatchedWithMultipleShapes())
                   {
-                     string shapeName = getShapeNameAtIndex(rebar, ii);
+                     string shapeName = GetShapeNameAtIndex(rebar, ii);
                      string elementName = rebar.Name;
                      if (!elementName.Contains(shapeName))
                      {
@@ -401,7 +506,7 @@ namespace Revit.IFC.Export.Exporter
                      }
                   }
 
-                  int indexForNamingAndGUID = (itemIndex > 0) ? ii + itemIndex : ii + 1;
+                  int indexForNamingAndGUID = ii + itemIndex;
 
                   string rebarName = NamingUtil.GetNameOverride(rebarElement, rebarNameFormated + ": " + indexForNamingAndGUID);
 
@@ -420,14 +525,29 @@ namespace Revit.IFC.Export.Exporter
                      }
                      else
                         endParam += 1.0;
-                     curves.Add(baseCurve.CreateTransformed(barTrf));
+
+                     if (barTrf.IsConformal)
+                     {
+                        curves.Add(baseCurve.CreateTransformed(barTrf));
+                     }
+                     else
+                     {
+                        // There are cases where the Rebar API returns slightly non-conformal
+                        // transforms that cause an exception in CreateTransformed above.  Until
+                        // that API is improved, we will do our own non-conformal transformation
+                        // if possible.
+                        Curve curve = ApplyNonConformalTransformIfPossible(baseCurve, barTrf);
+                        if (curve == null)
+                           throw new InvalidOperationException("Couldn't transform rebar curve.");
+                        
+                        curves.Add(curve);
+                     }
                   }
 
                   // For IFC4 and Structural Exchange Requirement export, Entity type not allowed for RV: IfcPolyline
                   IFCAnyHandle compositeCurve = GeometryUtil.CreateCompositeOrIndexedCurve(exporterIFC, curves, null, null);
                   IFCAnyHandle sweptDiskSolid = IFCInstanceExporter.CreateSweptDiskSolid(file, compositeCurve, modelDiameter / 2, null, 0, endParam);
-                  HashSet<IFCAnyHandle> bodyItems = new HashSet<IFCAnyHandle>();
-                  bodyItems.Add(sweptDiskSolid);
+                  HashSet<IFCAnyHandle> bodyItems = new HashSet<IFCAnyHandle>() { sweptDiskSolid };
                   RepresentationUtil.CreateStyledItemAndAssign(file, rebarElement.Document, materialId, sweptDiskSolid);
 
 
@@ -440,13 +560,14 @@ namespace Revit.IFC.Export.Exporter
 
                   string rebarGUID = (indexForNamingAndGUID < maxBarGUIDS) ?
                       GUIDUtil.CreateSubElementGUID(rebarElement, indexForNamingAndGUID + (int)IFCReinforcingBarSubElements.BarStart - 1) :
-                      GUIDUtil.CreateGUID();
+                      GUIDUtil.GenerateIFCGuidFrom(
+                         GUIDUtil.CreateGUIDString(rebarElement, indexForNamingAndGUID.ToString()));
                   IFCAnyHandle elemHnd = IFCInstanceExporter.CreateReinforcingBar(exporterIFC, rebarElement, rebarGUID, ExporterCacheManager.OwnerHistoryHandle,
                      copyLevelPlacement, prodRep, steelGrade, longitudinalBarNominalDiameter, longitudinalBarCrossSectionArea, barLength, role, null);
                   IFCAnyHandleUtil.OverrideNameAttribute(elemHnd, rebarName);
                   IFCExportInfoPair exportInfo = new IFCExportInfoPair(IFCEntityType.IfcReinforcingBar);
 
-                  // We will not add the element ot the productWrapper here, but instead in the function that calls
+                  // We will not add the element to the productWrapper here, but instead in the function that calls
                   // ExportRebar.  The reason for this is that we don't currently know if the handles such be associated
                   // to the level or not, depending on whether they will or won't be grouped.
                   createdRebars.Add(new DelayedProductWrapper(rebarElement, elemHnd, setter.LevelInfo, exportInfo));
@@ -455,6 +576,13 @@ namespace Revit.IFC.Export.Exporter
 
                   ExporterCacheManager.HandleToElementCache.Register(elemHnd, rebarElement.Id);
                   CategoryUtil.CreateMaterialAssociation(exporterIFC, elemHnd, materialId);
+                  
+                  IFCAnyHandle typeHnd = ExporterUtil.CreateGenericTypeFromElement(rebarElement,
+                     exportInfo, file, productWrapper);
+                  if (!IFCAnyHandleUtil.IsNullOrHasNoValue(typeHnd))
+                  {
+                     ExporterCacheManager.TypeRelationsCache.Add(typeHnd, elemHnd);
+                  }
                }
             }
             transaction.Commit();
@@ -471,7 +599,7 @@ namespace Revit.IFC.Export.Exporter
       /// <returns>The list of IfcReinforcingBar handles created.</returns>
       private static ISet<DelayedProductWrapper> ExportRebar(ExporterIFC exporterIFC, Element rebarElement, ProductWrapper productWrapper)
       {
-         return ExportRebar(exporterIFC, rebarElement, rebarElement, 0, productWrapper);
+         return ExportRebar(exporterIFC, rebarElement, rebarElement, 1, productWrapper);
       }
 
       /// <summary>
@@ -721,7 +849,7 @@ namespace Revit.IFC.Export.Exporter
          }
       }
 
-      static public string getShapeNameAtIndex(Rebar rebar, int barPositionIndex)
+      static public string GetShapeNameAtIndex(Rebar rebar, int barPositionIndex)
       {
          string shapeName = "";
          if (rebar == null)

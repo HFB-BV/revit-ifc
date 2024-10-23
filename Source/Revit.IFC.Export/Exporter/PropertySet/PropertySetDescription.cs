@@ -168,7 +168,8 @@ namespace Revit.IFC.Export.Exporter.PropertySet
       /// <param name="elemTypeToUse">The base element type.</param>
       /// <param name="handle">The handle for which we process the entries.</param>
       /// <returns>A set of property handles.</returns>
-      public ISet<IFCAnyHandle> ProcessEntries(IFCFile file, ExporterIFC exporterIFC, IFCExtrusionCreationData ifcParams, ElementOrConnector elementOrConnectorToUse, ElementType elemTypeToUse, IFCAnyHandle handle)
+      public ISet<IFCAnyHandle> ProcessEntries(IFCFile file, ExporterIFC exporterIFC, IFCExportBodyParams ifcParams, 
+         ElementOrConnector elementOrConnectorToUse, ElementType elemTypeToUse, IFCAnyHandle handle)
       {
          // We need to ensure that we don't have the same property name twice in the same property set.
          // By convention, we will keep the last property with the same name.  This allows for a user-defined
@@ -176,11 +177,20 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          // have different names.
          IDictionary<string, IFCAnyHandle> propertiesByName = new SortedDictionary<string, IFCAnyHandle>();
 
+         // Get the property from Type for this element if the pset is for schedule or 
+         // if element doesn't have an associated type (e.g. IfcRoof)
+         bool lookInType = ExporterCacheManager.ViewScheduleElementCache.ContainsKey(this.ViewScheduleId)
+                           || IFCAnyHandleUtil.IsTypeOneOf(handle, PropertyUtil.EntitiesWithNoRelatedType);
+
          foreach (PropertySetEntry entry in m_Entries)
          {
             try
             {
-               IFCAnyHandle propHnd = entry.ProcessEntry(file, exporterIFC, Name, ifcParams, elementOrConnectorToUse, elemTypeToUse, handle);
+               IFCAnyHandle propHnd = entry.ProcessEntry(file, exporterIFC, Name, ifcParams, elementOrConnectorToUse, elemTypeToUse, handle, lookInType);
+
+               if (IFCAnyHandleUtil.IsNullOrHasNoValue(propHnd) && ExporterCacheManager.ExportOptionsCache.PropertySetOptions.ExportMaterialPsets)
+                  propHnd = MaterialBuildInParameterUtil.CreateMaterialPropertyIfBuildIn(Name, entry.PropertyName, entry.PropertyType, elementOrConnectorToUse?.Element, file);
+
                if (IFCAnyHandleUtil.IsNullOrHasNoValue(propHnd))
                   continue;
 

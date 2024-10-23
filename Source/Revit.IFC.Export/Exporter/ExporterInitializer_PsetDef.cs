@@ -38417,7 +38417,6 @@ namespace Revit.IFC.Export.Exporter
          {
             propertySetMaterialConcrete.EntityTypes.Add(IFCEntityType.IfcMaterial);
             propertySetMaterialConcrete.ObjectType = "IfcMaterial";
-            propertySetMaterialConcrete.PredefinedType = "Concrete";
             ifcPSE = new PropertySetEntry("CompressiveStrength");
             ifcPSE.PropertyName = "CompressiveStrength";
             ifcPSE.PropertyType = PropertyType.Pressure;
@@ -38850,7 +38849,6 @@ namespace Revit.IFC.Export.Exporter
          {
             propertySetMaterialSteel.EntityTypes.Add(IFCEntityType.IfcMaterial);
             propertySetMaterialSteel.ObjectType = "IfcMaterial";
-            propertySetMaterialSteel.PredefinedType = "Steel";
             ifcPSE = new PropertySetEntry("YieldStress");
             ifcPSE.PropertyName = "YieldStress";
             ifcPSE.PropertyType = PropertyType.Pressure;
@@ -39069,7 +39067,6 @@ namespace Revit.IFC.Export.Exporter
          {
             propertySetMaterialWood.EntityTypes.Add(IFCEntityType.IfcMaterial);
             propertySetMaterialWood.ObjectType = "IfcMaterial";
-            propertySetMaterialWood.PredefinedType = "Wood";
             ifcPSE = new PropertySetEntry("Species");
             ifcPSE.PropertyName = "Species";
             ifcPSE.PropertyType = PropertyType.Label;
@@ -39169,7 +39166,6 @@ namespace Revit.IFC.Export.Exporter
          {
             propertySetMaterialWoodBasedBeam.EntityTypes.Add(IFCEntityType.IfcMaterial);
             propertySetMaterialWoodBasedBeam.ObjectType = "IfcMaterial";
-            propertySetMaterialWoodBasedBeam.PredefinedType = "Wood";
             ifcPSE = new PropertySetEntry("ApplicableStructuralDesignMethod");
             ifcPSE.PropertyName = "ApplicableStructuralDesignMethod";
             ifcPSE.PropertyType = PropertyType.Label;
@@ -39717,7 +39713,6 @@ namespace Revit.IFC.Export.Exporter
          {
             propertySetMaterialWoodBasedPanel.EntityTypes.Add(IFCEntityType.IfcMaterial);
             propertySetMaterialWoodBasedPanel.ObjectType = "IfcMaterial";
-            propertySetMaterialWoodBasedPanel.PredefinedType = "Wood";
             ifcPSE = new PropertySetEntry("ApplicableStructuralDesignMethod");
             ifcPSE.PropertyName = "ApplicableStructuralDesignMethod";
             ifcPSE.PropertyType = PropertyType.Label;

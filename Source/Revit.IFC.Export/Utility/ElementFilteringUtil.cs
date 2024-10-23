@@ -217,11 +217,12 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">The element.</param>
       /// <param name="allowSeparateOpeningExport">True if IfcOpeningElement is allowed to be exported.</param>
       /// <returns>True if the element should be exported, false otherwise.</returns>
-      /// <remarks>There are some inefficiencies here, as we later check IfcExportAs in other contexts.  We should attempt to get the value only once.</remarks>
+      /// <remarks>There are some inefficiencies here, as we call GetExportInfoFromParameters
+      /// in other contexts.  We should attempt to get the value only once.</remarks>
       public static bool ShouldElementBeExported(ExporterIFC exporterIFC, Element element, bool allowSeparateOpeningExport)
       {
          // Allow the ExporterStateManager to say that an element should be exported regardless of settings.
-         if (ExporterStateManager.CanExportElementOverride())
+         if (ExporterStateManager.CanExportElementOverride)
             return true;
 
          // Check to see if the category should be exported.  This overrides the IfcExportAs parameter.
@@ -267,11 +268,11 @@ namespace Revit.IFC.Export.Utility
       /// <returns>True if equal, false otherwise.</returns>
       private static bool IsEqualToTypeName(String name, String baseName)
       {
-         if (String.Compare(name, baseName, true) == 0)
+         if (string.Compare(name, baseName, true) == 0)
             return true;
 
-         String typeName = baseName + "Type";
-         return (String.Compare(name, typeName, true) == 0);
+         string typeName = IfcSchemaEntityTree.GetTypeNameFromInstanceName(baseName);
+         return (string.Compare(name, typeName, true) == 0);
       }
 
       /// <summary>
@@ -301,6 +302,20 @@ namespace Revit.IFC.Export.Utility
          return false;
       }
 
+      static IDictionary<string, IFCEntityType> PreIFC4Remap = new Dictionary<string, IFCEntityType>()
+      {
+         { "IFCAUDIOVISUALAPPLIANCE", IFCEntityType.IfcElectricApplianceType },
+         { "IFCBURNER", IFCEntityType.IfcGasTerminalType },
+         { "IFCELECTRICDISTRIBUTIONBOARD", IFCEntityType.IfcElectricDistributionPoint }
+      };
+
+      static IDictionary<string, IFCEntityType> IFC4Remap = new Dictionary<string, IFCEntityType>()
+      {
+         { "IFCGASTERMINAL", IFCEntityType.IfcBurnerType },
+         { "IFCELECTRICDISTRIBUTIONPOINT", IFCEntityType.IfcElectricDistributionBoardType },
+         { "IFCELECTRICHEATER", IFCEntityType.IfcSpaceHeaterType }
+      };
+
       /// <summary>
       /// Gets export type from IFC class name.
       /// </summary>
@@ -310,8 +325,8 @@ namespace Revit.IFC.Export.Utility
       {
          IFCExportInfoPair exportInfoPair = new IFCExportInfoPair();
 
-         string cleanIFCClassName = originalIFCClassName.Trim();
-         if (cleanIFCClassName.StartsWith("Ifc", true, null))
+         string cleanIFCClassName = originalIFCClassName.Trim().ToUpper();
+         if (cleanIFCClassName.StartsWith("IFC"))
          {
             // Here we try to catch any possible types that are missing above by checking both the class name or the type name
             // Unless there is any special treatment needed most of the above check can be done here
@@ -322,73 +337,51 @@ namespace Revit.IFC.Export.Utility
             // Deal with small number of IFC2x3/IFC4 types that have changed in a hardwired way.
             if (ExporterCacheManager.ExportOptionsCache.ExportAsOlderThanIFC4)
             {
-               if (string.Compare(clName, "IfcBurner", true) == 0)
-               {
-                  exportInfoPair.SetValueWithPair(IFCEntityType.IfcGasTerminalType);
-               }
-               else if (string.Compare(clName, "IfcElectricDistributionBoard", true) == 0)
-               {
-                  exportInfoPair.SetValueWithPair(IFCEntityType.IfcElectricDistributionPoint);
-               }
+               if (PreIFC4Remap.TryGetValue(clName, out IFCEntityType ifcEntityType))
+                  exportInfoPair.SetValueWithPair(ifcEntityType);
                else
-               {
                   exportInfoPair.SetValueWithPair(clName);
-               }
             }
             else
             {
-               if (string.Compare(clName, "IfcGasTerminal", true) == 0)
-               {
-                  exportInfoPair.SetValueWithPair(IFCEntityType.IfcBurnerType);
-               }
-               else if (string.Compare(clName, "IfcElectricDistributionPoint", true) == 0)
-               {
-                  exportInfoPair.SetValueWithPair(IFCEntityType.IfcElectricDistributionBoardType);
-               }
-               else if (string.Compare(clName, "IfcElectricHeater", true) == 0)
-               {
-                  exportInfoPair.SetValueWithPair(IFCEntityType.IfcSpaceHeaterType);
-               }
+               if (IFC4Remap.TryGetValue(clName, out IFCEntityType ifcEntityType))
+                  exportInfoPair.SetValueWithPair(ifcEntityType);
                else
-               {
                   exportInfoPair.SetValueWithPair(clName);
-            }
             }
 
             if (exportInfoPair.ExportInstance == IFCEntityType.UnKnown)
-               {
                exportInfoPair.SetValueWithPair(IFCEntityType.IfcBuildingElementProxy);
-               }
-            }
+         }
 
          exportInfoPair.ValidatedPredefinedType = IFCValidateEntry.GetValidIFCPredefinedType("NOTDEFINED", exportInfoPair.ExportType.ToString());
 
          return exportInfoPair;
       }
 
-      static IDictionary<BuiltInCategory, IFCExportInfoPair> s_CategoryToExportType = null;
+      static IDictionary<ElementId, IFCExportInfoPair> s_CategoryToExportType = null;
 
       static void InitializeCategoryToExportType()
       {
          if (s_CategoryToExportType != null)
             return;
 
-         s_CategoryToExportType = new Dictionary<BuiltInCategory, IFCExportInfoPair>() {
-            { BuiltInCategory.OST_Cornices, new IFCExportInfoPair(IFCEntityType.IfcBeam, "NOTDEFINED") },
-            { BuiltInCategory.OST_Ceilings, new IFCExportInfoPair(IFCEntityType.IfcCovering, "NOTDEFINED") },
-            { BuiltInCategory.OST_CurtainWallPanels, new IFCExportInfoPair(IFCEntityType.IfcPlate, "CURTAIN_PANEL") },
-            { BuiltInCategory.OST_Furniture, new IFCExportInfoPair(IFCEntityType.IfcFurniture, "NOTDEFINED") },
-            { BuiltInCategory.OST_Floors, new IFCExportInfoPair(IFCEntityType.IfcSlab, "FLOOR") },
-            { BuiltInCategory.OST_IOSModelGroups, new IFCExportInfoPair(IFCEntityType.IfcGroup, "NOTDEFINED") },
-            { BuiltInCategory.OST_Mass, new IFCExportInfoPair(IFCEntityType.IfcBuildingElementProxy, "NOTDEFINED") },
-            { BuiltInCategory.OST_CurtainWallMullions, new IFCExportInfoPair(IFCEntityType.IfcMember, "MULLION") },
-            { BuiltInCategory.OST_Railings, new IFCExportInfoPair(IFCEntityType.IfcRailing, "NOTDEFINED") },
-            { BuiltInCategory.OST_Ramps, new IFCExportInfoPair(IFCEntityType.IfcRamp, "NOTDEFINED") },
-            { BuiltInCategory.OST_Roofs, new IFCExportInfoPair(IFCEntityType.IfcRoof, "NOTDEFINED") },
-            { BuiltInCategory.OST_Site, new IFCExportInfoPair(IFCEntityType.IfcSite, "NOTDEFINED") },
-            { BuiltInCategory.OST_Stairs, new IFCExportInfoPair(IFCEntityType.IfcStair, "NOTDEFINED") },
-            { BuiltInCategory.OST_Walls, new IFCExportInfoPair(IFCEntityType.IfcWall, "NOTDEFINED") },
-            { BuiltInCategory.OST_Windows, new IFCExportInfoPair(IFCEntityType.IfcWindow, "NOTDEFINED") }
+         s_CategoryToExportType = new Dictionary<ElementId, IFCExportInfoPair>() {
+            { new ElementId(BuiltInCategory.OST_Cornices), new IFCExportInfoPair(IFCEntityType.IfcBeam, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Ceilings), new IFCExportInfoPair(IFCEntityType.IfcCovering, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_CurtainWallPanels), new IFCExportInfoPair(IFCEntityType.IfcPlate, "CURTAIN_PANEL") },
+            { new ElementId(BuiltInCategory.OST_Furniture), new IFCExportInfoPair(IFCEntityType.IfcFurniture, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Floors), new IFCExportInfoPair(IFCEntityType.IfcSlab, "FLOOR") },
+            { new ElementId(BuiltInCategory.OST_IOSModelGroups), new IFCExportInfoPair(IFCEntityType.IfcGroup, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Mass), new IFCExportInfoPair(IFCEntityType.IfcBuildingElementProxy, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_CurtainWallMullions), new IFCExportInfoPair(IFCEntityType.IfcMember, "MULLION") },
+            { new ElementId(BuiltInCategory.OST_Railings), new IFCExportInfoPair(IFCEntityType.IfcRailing, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Ramps), new IFCExportInfoPair(IFCEntityType.IfcRamp, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Roofs), new IFCExportInfoPair(IFCEntityType.IfcRoof, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Site), new IFCExportInfoPair(IFCEntityType.IfcSite, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Stairs), new IFCExportInfoPair(IFCEntityType.IfcStair, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Walls), new IFCExportInfoPair(IFCEntityType.IfcWall, "NOTDEFINED") },
+            { new ElementId(BuiltInCategory.OST_Windows), new IFCExportInfoPair(IFCEntityType.IfcWindow, "NOTDEFINED") }
          };
       }
 
@@ -401,7 +394,7 @@ namespace Revit.IFC.Export.Utility
       {
          InitializeCategoryToExportType();
          IFCExportInfoPair exportInfoPair;
-         if (s_CategoryToExportType.TryGetValue((BuiltInCategory)categoryId.IntegerValue, out exportInfoPair))
+         if (s_CategoryToExportType.TryGetValue(categoryId, out exportInfoPair))
             return exportInfoPair;
          return new IFCExportInfoPair();
       }
@@ -596,6 +589,12 @@ namespace Revit.IFC.Export.Utility
          m_CategoryVisibilityCache.Clear();
       }
 
+      private static bool ProcessingLink()
+      {
+         return ExporterCacheManager.ExportOptionsCache.HostViewId != ElementId.InvalidElementId ||
+            ExporterStateManager.CurrentLinkId != ElementId.InvalidElementId;
+      }
+
       /// <summary>
       /// Checks if a category is visible for certain view.
       /// </summary>
@@ -609,13 +608,23 @@ namespace Revit.IFC.Export.Utility
          if (category == null || filterView == null)
             return true;
 
-         bool isVisible = false;
+         bool isVisible;
          if (m_CategoryVisibilityCache.TryGetValue(category.Id, out isVisible))
             return isVisible;
 
-         // The category will be visible if either we don't allow visibility controls (default: true), or
-         // we do allow visibility controls and the category is visible in the view.
-         isVisible = (!category.get_AllowsVisibilityControl(filterView) || category.get_Visible(filterView));
+         if (category.Id.IntegerValue > 0 && ProcessingLink())
+         {
+            // We don't support checking the visibility of link document custom categories
+            // in the host view here.  We will use a different filter for this.
+            isVisible = true;
+         }
+         else
+         {
+            // The category will be visible if either we don't allow visibility controls (default: true), or
+            // we do allow visibility controls and the category is visible in the view.
+            isVisible = (!category.get_AllowsVisibilityControl(filterView) || category.get_Visible(filterView));
+         }
+
          m_CategoryVisibilityCache[category.Id] = isVisible;
          return isVisible;
       }
@@ -640,9 +649,10 @@ namespace Revit.IFC.Export.Utility
          if (hidden)
             return false;
 
-         bool temporaryVisible = filterView.IsElementVisibleInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate, element.Id);
+         if (ProcessingLink())
+            return true;
 
-         return temporaryVisible;
+         return filterView.IsElementVisibleInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate, element.Id);
       }
 
       /// <summary>
@@ -716,7 +726,7 @@ namespace Revit.IFC.Export.Utility
             if ((node.IsSubTypeOf("IfcObject") && 
                      (node.IsSubTypeOf("IfcProduct") || node.IsSubTypeOf("IfcGroup") || node.Name.Equals("IfcGroup", StringComparison.InvariantCultureIgnoreCase)))
                   || node.IsSubTypeOf("IfcProject") || node.Name.Equals("IfcProject", StringComparison.InvariantCultureIgnoreCase)
-                  || node.IsSubTypeOf("IfcTypeObject"))
+                  || node.IsSubTypeOf("IfcTypeObject") || node.Name.Equals("IfcMaterial", StringComparison.InvariantCultureIgnoreCase))
             {
                if (IFCEntityType.TryParse(entityType, true, out ifcType))
                   ret = ifcType;

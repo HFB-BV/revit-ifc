@@ -187,7 +187,7 @@ namespace Revit.IFC.Export.Utility
             PolyLineIndices inputPolyLineIndices = segmentIndices as PolyLineIndices;
             if (segmentIndices == this || inputPolyLineIndices == null)
                return false;
-            
+
             //Indices array after merge must not contain duplicated indices.
             //So remove either End index of this segment or Start index of input segment.
             Indices.RemoveAt(Indices.Count - 1);
@@ -642,12 +642,9 @@ namespace Revit.IFC.Export.Utility
       public static Options GetIFCExportGeometryOptions()
       {
          Options options = new Options();
-         if (ExporterCacheManager.ExportOptionsCache.FilterViewForExport != null)
-         {
-            options.DetailLevel = ExporterCacheManager.ExportOptionsCache.FilterViewForExport.DetailLevel;
-         }
-         else
-            options.DetailLevel = ViewDetailLevel.Fine;
+         options.DetailLevel =
+            ExporterCacheManager.ExportOptionsCache.FilterViewForExport?.DetailLevel ??
+            ViewDetailLevel.Fine;
          return options;
       }
 
@@ -964,16 +961,16 @@ namespace Revit.IFC.Export.Utility
       /// </summary>
       /// <param name="geomElement">The original geometry.</param>
       /// <param name="numFlights">The number of stair flights, or 0 if unknown.  If there is exactly 1 flight, return the original geoemtry.</param>
-      /// <returns>The geometry element.</returns>
+      /// <returns>The geometry element with its symbol id.</returns>
       /// <remarks>This routine may not work properly for railings created before 2006.  If you get
       /// poor representations from such railings, please upgrade the railings if possible.</remarks>
-      public static GeometryElement GetOneLevelGeometryElement(GeometryElement geomElement, int numFlights)
+      public static (GeometryElement element, ElementId symbolId) GetOneLevelGeometryElement(GeometryElement geomElement, int numFlights)
       {
          if (geomElement == null)
-            return null;
+            return (null, null);
 
          if (numFlights == 1)
-            return geomElement;
+            return (geomElement, null);
 
          foreach (GeometryObject geomObject in geomElement)
          {
@@ -992,16 +989,95 @@ namespace Revit.IFC.Export.Utility
             // representations.  If this is a concern, please upgrade the railings to any format since 2006.
             if (symbolGeomElement != null)
             {
+               ElementId oneLevelGeomSymbolId = geomInstance.Symbol.Id;
                Transform trf = geomInstance.Transform;
                if (trf != null && !trf.IsIdentity)
-                  return symbolGeomElement.GetTransformed(trf);
+                  return (symbolGeomElement.GetTransformed(trf), oneLevelGeomSymbolId);
                else
-                  return symbolGeomElement;
+                  return (symbolGeomElement, oneLevelGeomSymbolId);
             }
          }
-
-         return geomElement;
+         return (geomElement, null);
       }
+
+      /// <summary>
+      /// Get additional geometry of one level of a potentially multi-story stair, ramp, or railing that wasn't added in GetOneLevelGeometryElement
+      /// </summary>
+      /// <param name="allLevelsGeometry">The original geometry.</param>
+      /// <param name="mainGeometrySymbolId">The symbol id of the level main geometry.</param>
+      /// <returns>The geometry elements list.</returns>
+      public static List<GeometryElement> GetAdditionalOneLevelGeometry(GeometryElement allLevelsGeometry, ElementId mainGeometrySymbolId)
+      {
+         List<GeometryElement> additionalGeometry = new List<GeometryElement>();
+
+         if (allLevelsGeometry == null || mainGeometrySymbolId == null)
+            return additionalGeometry;
+
+         // Collect geometry and its Origin.Z grouped by symbols
+         Dictionary<ElementId, IList<Tuple<GeometryInstance, double>>> symbols = new Dictionary<ElementId, IList<Tuple<GeometryInstance, double>>>();
+         foreach (GeometryObject geomObject in allLevelsGeometry)
+         {
+            GeometryInstance instance = geomObject as GeometryInstance;
+            if (instance == null || instance.Symbol.Id == null)
+               continue;
+
+            ElementId id = instance.Symbol.Id;
+
+            IList<Tuple<GeometryInstance, double>> geomInstances;
+            if (!symbols.TryGetValue(id, out geomInstances))
+            {
+               geomInstances = new List<Tuple<GeometryInstance, double>>();
+               symbols[id] = geomInstances;
+            }
+            geomInstances.Add(new Tuple<GeometryInstance, double>(instance, instance.Transform.Origin.Z));
+         }
+
+         // Define the number of flights as number of main instances
+         int numFlights = 0;
+         IList<Tuple<GeometryInstance, double>> instances;
+         if (symbols.TryGetValue(mainGeometrySymbolId, out instances))
+            numFlights = instances.Count;
+
+         if (numFlights < 1)
+            return additionalGeometry;
+
+         // Collect proper amount of instances of each geometry
+         List<GeometryInstance> instncesToAdd = new List<GeometryInstance>();
+         foreach (KeyValuePair<ElementId, IList<Tuple<GeometryInstance, double>>> symbol in symbols)
+         {
+            if (symbol.Key == mainGeometrySymbolId)
+               continue;
+
+            int numCurrInstances = symbol.Value.Count;
+            if (numCurrInstances == 0 || numCurrInstances % numFlights != 0)
+               continue;
+
+            // We take 'numCurrInstances/numFlights' instances with the lowest Origin.Z
+            // The oter instances are repeateble geometry of another level(flight)
+            int numInstancesToAdd = symbol.Value.Count / numFlights;
+            List<Tuple<GeometryInstance, double>> currInstances = symbol.Value.ToList();
+            instncesToAdd.AddRange(symbol.Value.OrderBy(x => x.Item2).Select(x => x.Item1).Take(numInstancesToAdd).ToList());
+         }
+
+         // Collect output geometry
+         foreach (GeometryInstance instance in instncesToAdd)
+         {
+            Element baseSymbol = instance.Symbol;
+            if (!(baseSymbol is ElementType))
+               continue;
+            GeometryElement symbolGeomElement = instance.GetSymbolGeometry();
+            if (symbolGeomElement != null)
+            {
+               Transform trf = instance.Transform;
+               if (trf != null && !trf.IsIdentity)
+                  additionalGeometry.Add(symbolGeomElement.GetTransformed(trf));
+               else
+                  additionalGeometry.Add(symbolGeomElement);
+            }
+         }
+         return additionalGeometry;
+      }
+
 
       /// <summary>
       /// Projects a point to the closest point on the XY plane of a local coordinate system.
@@ -2063,7 +2139,7 @@ namespace Revit.IFC.Export.Utility
 
          double scaledPlanesDistance = UnitUtil.ScaleLength(planesDistance);
          Transform plane1LCS = GeometryUtil.CreateTransformFromPlane(plane1);
-         IFCAnyHandle extrusionHandle = ExtrusionExporter.CreateExtrudedSolidFromCurveLoop(exporterIFC, null, origCurveLoops, plane1LCS, extDir, scaledPlanesDistance, false);
+         IFCAnyHandle extrusionHandle = ExtrusionExporter.CreateExtrudedSolidFromCurveLoop(exporterIFC, null, origCurveLoops, plane1LCS, extDir, scaledPlanesDistance, false, out _);
 
          IFCAnyHandle booleanBodyItemHnd = IFCInstanceExporter.CreateBooleanResult(exporterIFC.GetFile(), IFCBooleanOperator.Difference,
              origBodyRepHnd, extrusionHandle);
@@ -2598,16 +2674,24 @@ namespace Revit.IFC.Export.Utility
       /// <param name="height">The height.</param>
       /// <param name="width">The width.</param>
       /// <returns>True if gets the values successfully.</returns>
-      public static bool ComputeHeightWidthOfCurveLoop(CurveLoop curveLoop, out double height, out double width)
+      public static bool ComputeHeightWidthOfCurveLoop(CurveLoop curveLoop, XYZ expectedWidthDir, out double height, out double width)
       {
+         bool result = false;
          height = width = 0;
 
          if (!curveLoop.HasPlane())
-            return false;
+            return result;
 
          Plane plane = curveLoop.GetPlane();
          Transform lcs = CreateTransformFromPlane(plane);
-         return ComputeHeightWidthOfCurveLoop(curveLoop, lcs, out height, out width);
+
+         result = ComputeHeightWidthOfCurveLoop(curveLoop, lcs, out height, out width);
+
+         // The plane might be flipped. Swap height and width in this case
+         if (expectedWidthDir != null && MathUtil.VectorsAreParallel(expectedWidthDir, plane.YVec))
+            (height, width) = (width, height);
+
+         return result;
       }
 
       /// <summary>
@@ -2644,6 +2728,23 @@ namespace Revit.IFC.Export.Utility
       /// methods used instead.
       /// </remarks>
       public static int MaxFaceCountForSplitVolumes = 2048;
+
+      /// <summary>
+      /// Gets the volume of a solid, if it is possible.
+      /// </summary>
+      /// <param name="solid">The solid.</param>
+      /// <returns>The volume of the solid, or null if it can't be determined.</returns>
+      public static double? GetSafeVolume(Solid solid)
+      {
+         try
+         {
+            return solid?.Volume ?? null;
+         }
+         catch
+         {
+            return null;
+         }
+      }
 
       /// <summary>
       /// Splits a Solid into distinct volumes.
@@ -2806,7 +2907,7 @@ namespace Revit.IFC.Export.Utility
       {
          IFCFile file = exporterIFC.GetFile();
 
-         bool exportAs2x2 = exporterIFC.ExportAs2x2;
+         bool exportAs2x2 = ExporterCacheManager.ExportOptionsCache.ExportAs2x2;
 
          if (!useSimpleBoundary)
          {
@@ -3195,6 +3296,7 @@ namespace Revit.IFC.Export.Utility
             // Avoid consecutive duplicates
             if (CoordsAreWithinVertexTol(startPoint, endPoint))
                return null;
+
             return new PolyLineVertices(startPoint, endPoint);
          }
       }
@@ -3364,6 +3466,7 @@ namespace Revit.IFC.Export.Utility
             return new PolyLineVertices(listXYZ);
          else if (listUV != null && listUV.Count >= 2)
             return new PolyLineVertices(listUV);
+
          return null;
       }
       private static IList<IList<double>> OutdatedPointListFromGenericCurve(ExporterIFC exporterIFC,
@@ -3680,182 +3783,140 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
-      /// Sort the edge loops in the given face
+      /// Organizes the edge loops of a face in groups of one outer loop and its corresponding inner loops.
       /// </summary>
-      /// <param name="edgeArrays">The list of loops</param>
-      /// <param name="face">The given face</param>
-      /// <returns>Returns a map that maps every outer loop to its corresponding inner loops</returns>
-      public static Dictionary<EdgeArray, IList<EdgeArray>> SortEdgeLoop(EdgeArrayArray edgeArrays, Face face)
+      /// <param name="face">The input face</param>
+      /// <returns></returns>
+      public static List<(EdgeArray outerLoop, List<EdgeArray> innerLoops)> GetOuterLoopsWithInnerLoops(Face face)
       {
-         // we will sort these loops by tessellating every edgeArray on the given face to get the uv loop. 
-         // The connection between each edge array and its corresponding uv loop will be stored in the loopMap. 
-         // We will then sort the uv loops and store the result in the sortedTessellatedLoops. After we 
-         // finish sorting uv loops, we convert them back to edge arrays and return the result
+         var uvDomain = face.GetBoundingBox();
 
-         Dictionary<EdgeArray, IList<EdgeArray>> sortedEdgeLoops = new Dictionary<EdgeArray, IList<EdgeArray>>();
-         Dictionary<IList<UV>, IList<IList<UV>>> sortedTessellatedLoops = new Dictionary<IList<UV>, IList<IList<UV>>>();
-         IDictionary<IList<UV>, EdgeArray> loopMap = new Dictionary<IList<UV>, EdgeArray>();
+         var outerLoops = new List<EdgeArray>();
+         var innerLoops = new List<EdgeArray>();
+         var combinedLoops = new List<(EdgeArray outerLoop, List<EdgeArray> innerLoops)>();
 
-         foreach (EdgeArray edgeArray in edgeArrays)
+         //Classify as outer or inner loop by looking at loop orientations.
+         foreach (var loop in face.EdgeLoops.Cast<EdgeArray>())
          {
-            // We will tessellate edgeArray to get tessellatedLoop
-            List<UV> tessellatedLoop = new List<UV>();
+            if (LoopIsCCWOnFace(face, loop))
+               outerLoops.Add(loop);
+            else
+               innerLoops.Add(loop);
+         }
 
+         //Special cases of no inner loops or only one outer loop.
+         if (!innerLoops.Any())
+            return outerLoops.Select(ol => (ol, new List<EdgeArray>())).ToList();
 
-            // the number of already processed edges, we only use this to know if we are processing the last edge or not
-            int count = 0;
+         if (outerLoops.Count == 1)
+            return new List<(EdgeArray outerLoop, List<EdgeArray> innerLoops)> { (outerLoops[0], innerLoops) };
 
-            // Tessellate each edge to get a list of UV points and add them to tessellatedLoop
-            // we have to make sure that we don't add the same point twice to the list, since each point is shared by 2 edges in the loop
-            foreach (Edge edge in edgeArray)
+         //Special case where the outer loop has incorrect orientation. Still try to export with single outer loop.
+         if (outerLoops.Count == 0 && innerLoops.Count == 1)
+            return new List<(EdgeArray outerLoop, List<EdgeArray> innerLoops)> { (innerLoops[0], outerLoops) };
+
+         //No special case, have to find out which inner loop belongs to which outer loop.
+         //We do this by sampling the outer loops with rather high accuracy to approximate them
+         //with polygons and by checking for containment of a point of the inner loop in one 
+         //of those polygons.
+         var outerLoopToSamples = new Dictionary<EdgeArray, IList<UV>>();
+
+         var result = outerLoops.Select(ol => (ol, new List<EdgeArray>())).ToList();
+
+         foreach (var innerLoop in innerLoops)
+         {
+            var uv = innerLoop.Cast<Edge>().First().EvaluateOnFace(0.0, face);
+
+            bool found = false;
+            foreach (var (outerLoop, innerLoopsForOuter) in result)
             {
-
-               bool lastEdge = (++count == edgeArray.Size);
-               List<UV> tessellatedEdge = edge.TessellateOnFace(face).ToList<UV>();
-
-               // For the first edge in the loop, we will add all of its tessellated points to the list
-               if (tessellatedLoop.Count == 0)
+               IList<UV> samples = null;
+               if (!outerLoopToSamples.TryGetValue(outerLoop, out samples))
                {
-                  tessellatedLoop.AddRange(tessellatedEdge);
+                  samples = TessellateLoopOnFace(face, outerLoop);
+                  outerLoopToSamples[outerLoop] = samples;
                }
-               else
+
+               if (PointInsidePolygon(uv, samples))
                {
-                  // For every other edge that is not the first one, one of its end point will already be in tessellatedLoop (if not then
-                  // we have a disconnected edge loop, in that case we will stop the process and throw an exception). 
-                  // However, because tessellateOnFace is not consistent in the direction that it tessellates an edge, we don't know how 
-                  // this edge connects to the existing loop. Thus we have to check 2 end points of this edge against 2 end points of the
-                  // loops to decide which 2 of them are equal. 
-
-                  // If this edge is the last edge in the loop, then both of its end point will already be in the loop, hence we need an extra
-                  // check to avoid adding redundant points.
-                  double distEndToStart = tessellatedEdge[tessellatedEdge.Count - 1].DistanceTo(tessellatedLoop[0]);
-                  double distStartToStart = tessellatedEdge[0].DistanceTo(tessellatedLoop[0]);
-                  double distEndToEnd = tessellatedEdge[tessellatedEdge.Count - 1].DistanceTo(tessellatedLoop[tessellatedLoop.Count - 1]);
-                  double distStartToEnd = tessellatedEdge[0].DistanceTo(tessellatedLoop[tessellatedLoop.Count - 1]);
-
-                  double minDist = Math.Min(Math.Min(distEndToStart, distStartToStart), Math.Min(distEndToEnd, distStartToEnd));
-                  double uvTol = ExporterCacheManager.Document.Application.VertexTolerance;
-                  if (minDist > uvTol)
-                     throw new InvalidOperationException("Disconnected edge loop");
-
-                  if (MathUtil.IsAlmostEqual(distEndToStart, minDist))
-                  {
-                     // if the last point of the edge is the first point of the loop, then remove that last point, and
-                     // append the loop to this edge
-                     tessellatedEdge.RemoveAt(tessellatedEdge.Count - 1);
-                     if (lastEdge)
-                     {
-                        tessellatedEdge.RemoveAt(0);
-                     }
-                     tessellatedEdge.AddRange(tessellatedLoop);
-                     tessellatedLoop = tessellatedEdge;
-                  }
-                  else if (MathUtil.IsAlmostEqual(distStartToStart, minDist))
-                  {
-                     // if the first point of the edge is the first point of the loop, we reverse the edge, remove the last point (which used to be 
-                     // the first one), and append the loop to this edge
-                     tessellatedEdge.Reverse();
-                     tessellatedEdge.RemoveAt(tessellatedEdge.Count - 1);
-                     if (lastEdge)
-                     {
-                        tessellatedEdge.RemoveAt(0);
-                     }
-                     tessellatedEdge.AddRange(tessellatedLoop);
-                     tessellatedLoop = tessellatedEdge;
-                  }
-                  else if (MathUtil.IsAlmostEqual(distEndToEnd, minDist))
-                  {
-                     // if the last point of the edge is the last point of the loop, we remove that point and append the reversed edge to the loop
-                     tessellatedEdge.Reverse();
-                     tessellatedEdge.RemoveAt(0);
-                     if (lastEdge)
-                     {
-                        tessellatedEdge.RemoveAt(tessellatedEdge.Count - 1);
-                     }
-                     tessellatedLoop.AddRange(tessellatedEdge);
-                  }
-                  else if (MathUtil.IsAlmostEqual(distStartToEnd, minDist))
-                  {
-                     // if the last point of the loop is the first point of the edge, then we remove that point and append the edge to the loop
-                     tessellatedEdge.RemoveAt(0);
-                     if (lastEdge)
-                     {
-                        tessellatedEdge.RemoveAt(tessellatedEdge.Count - 1);
-                     }
-                     tessellatedLoop.AddRange(tessellatedEdge);
-                  }
-                  else
-                  {
-                     throw new InvalidOperationException("Unexpected case.");
-                  }
-               }
-            }
-
-            // After finishing tessellating this loop, store a map from the tessellatedLoop to the edgeArray in the loopMap
-            loopMap.Add(tessellatedLoop, edgeArray);
-
-            bool created = false;
-            // After getting the tessellatedLoop, we will add it to the sortedTessellatedLoops by first checking if this loop is inside 
-            // any of the outer loops in the map (which are the keys in this map)
-            // 1. If this loop is inside one of them, says outerLoop, then we will have to check if this loop is inside or contains any of the outerLoop's inners:
-            //      - if it is inside one of the outerLoop's inners, then this loop will be an outer loop and we will just have to add it as a new key to the map
-            //      - if it contains some of the outerLoop's inners, then all of these inners will become outer loops
-            //      - if none of the above, then we will add this loop as an another inner loop of the outerLoop
-            // 2. If this loop is not inside any of the outer loops, then it will be an outer loop.
-            foreach (KeyValuePair<IList<UV>, IList<IList<UV>>> entry in sortedTessellatedLoops)
-            {
-               // first we check if tessellatedLoop is inside any of the loop in the sortedTessellatedEdges
-               if (PointInsidePolygon(tessellatedLoop[0], entry.Key))
-               {
-                  // now we need to check if each loop in entry.Value is inside this loop
-                  IList<IList<UV>> innerLoops = new List<IList<UV>>();
-                  if (IsInsideAnotherLoop(tessellatedLoop, entry.Value))
-                  {
-                     // if tessellateLoop is inside another loop, then it will become the outer loop
-                     sortedTessellatedLoops.Add(tessellatedLoop, new List<IList<UV>>());
-                  }
-                  else if (IsOutsideOtherLoops(tessellatedLoop, entry.Value, out innerLoops))
-                  {
-                     // if tessellatedLoop contains some other loops, then all of these loops become outer loop
-                     entry.Value.Add(tessellatedLoop);
-                     foreach (IList<UV> innerLoop in innerLoops)
-                     {
-                        entry.Value.Remove(innerLoop);
-                        sortedTessellatedLoops.Add(innerLoop, new List<IList<UV>>());
-                     }
-                  }
-                  else
-                  {
-                     entry.Value.Add(tessellatedLoop);
-                  }
-                  created = true;
+                  innerLoopsForOuter.Add(innerLoop);
+                  found = true;
                   break;
                }
             }
 
-            if (!created)
-            {
-               // this means tessellatedLoop is not inside any of the outerloop in the sortedTessellatedLoop
-               sortedTessellatedLoops.Add(tessellatedLoop, new List<IList<UV>>());
-            }
+            if (!found)
+               return null;
          }
+         return result;
+      }
 
-         // convert IList<UV> back into EdgeArray and return the result;
+      /// <summary>
+      /// Determines wether a given loop on a face is CCW w.r.t. the face normal.
+      /// </summary>
+      /// <param name="face">The input face</param>
+      /// <param name="loop">The input loop on the face</param>
+      /// <returns></returns>
+      private static bool LoopIsCCWOnFace(Face face, EdgeArray loop)
+      {
+         var uvSamples = SampleLoopOnFaceSimple(loop, face, 4);
 
-         foreach (KeyValuePair<IList<UV>, IList<IList<UV>>> entry in sortedTessellatedLoops)
+         var points = uvSamples.Select(uv => new XYZ(uv.U, uv.V, 0.0)).ToList();
+         var normal = TriangleMergeUtil.NormalByNewellMethod(points);
+         bool ccwAroundSurfaceNormal = normal.Z > 0.0;
+         return face.OrientationMatchesSurfaceOrientation ? !ccwAroundSurfaceNormal : ccwAroundSurfaceNormal;
+      }
+
+      /// <summary>
+      /// Does simple sampling of an edge loop on a face.
+      /// </summary>
+      /// <param name="loop">The input loop</param>
+      /// <param name="face">The face on which the loop resides</param>
+      /// <param name="nSamplesPerCurvedEdge">The number of samples, not including the end point, that is taken on a curved edge</param>
+      /// <returns></returns>
+      private static UV[] SampleLoopOnFaceSimple(EdgeArray loop, Face face, int nSamplesPerCurvedEdge)
+      {
+         return loop.Cast<Edge>().SelectMany(e => SampleEdgeOnFaceSimple(e, face, nSamplesPerCurvedEdge)).ToArray();
+      }
+
+      /// <summary>
+      /// Does simple sampling of an edge on a face.
+      /// </summary>
+      /// <param name="edge">The input edge</param>
+      /// <param name="face">The face to which the edge belongs</param>
+      /// <param name="nSamplesWhenCurved">The number of samples, not including the end point, that is taken on a curved edge</param>
+      /// <returns></returns>
+      private static UV[] SampleEdgeOnFaceSimple(Edge edge, Face face, int nSamplesWhenCurved)
+      {
+         int nSamples = (edge.AsCurve() is Line) ? 1 : nSamplesWhenCurved;
+
+         double step = 1.0 / (double)nSamples;
+
+         var sampleParams = new List<double> { };
+
+         (int iStart, int iEnd, int increment) = edge.IsFlippedOnFace(face) ? (nSamples, 0, -1) : (0, nSamples, 1);
+         for (int i = iStart; i != iEnd; i += increment)
+            sampleParams.Add(i * step);
+
+         return sampleParams.Select(p => edge.EvaluateOnFace(p, face)).ToArray();
+      }
+
+      /// <summary>
+      /// Tessellates a loop on a face using built in accuracy parameters that are adequate for visual representation.
+      /// The UV samples are ordered such that the loop is traversed in its natural way
+      /// i.e. CCW around the face normal for outer loops and CW for inner loops.
+      /// </summary>
+      /// <param name="face">The face of the loop</param>
+      /// <param name="loop">The loop</param>
+      /// <returns></returns>
+      private static IList<UV> TessellateLoopOnFace(Face face, EdgeArray loop)
+      {
+         return loop.Cast<Edge>().SelectMany(e =>
          {
-            IList<UV> key = entry.Key;
-            IList<EdgeArray> innerLoops = new List<EdgeArray>();
+            var uvs = e.TessellateOnFace(face);
 
-            foreach (IList<UV> uvLoop in entry.Value)
-            {
-               innerLoops.Add(loopMap[uvLoop]);
-            }
-
-            sortedEdgeLoops.Add(loopMap[key], innerLoops);
-         }
-
-         return sortedEdgeLoops;
+            return e.IsFlippedOnFace(face) ? uvs.Reverse() : uvs;
+         }).ToList();
       }
 
       /// <summary>
@@ -3963,6 +4024,7 @@ namespace Revit.IFC.Export.Utility
             IFCAnyHandle pointListHnd = IFCInstanceExporter.CreateCartesianPointList(file, polyCurve.PointList);
             return IFCInstanceExporter.CreateIndexedPolyCurve(file, pointListHnd, segmentsIndices, false);
          }
+
          // if the Curve is a line, do the following
          if (curve is Line)
          {
@@ -3971,11 +4033,13 @@ namespace Revit.IFC.Export.Utility
             {
                Line curveLine = curve as Line;
                //ifcCurve = CreateLineSegment(exporterIFC, curveLine);
+
                // Create line based trimmed curve for Axis
                IFCAnyHandle curveOrigin = XYZtoIfcCartesianPoint(exporterIFC, curveLine.Origin, cartesianPoints, additionalTrf);
                XYZ dir = (additionalTrf == null) ? curveLine.Direction : additionalTrf.OfVector(curveLine.Direction);
                IFCAnyHandle vector = VectorToIfcVector(exporterIFC, curveLine.Direction);
                IFCAnyHandle line = IFCInstanceExporter.CreateLine(file, curveOrigin, vector);
+
                IFCAnyHandle startPoint = XYZtoIfcCartesianPoint(exporterIFC, curveLine.GetEndPoint(0), cartesianPoints, additionalTrf);
                HashSet<IFCData> trim1 = new HashSet<IFCData>();
                trim1.Add(IFCData.CreateIFCAnyHandle(startPoint));
@@ -3992,24 +4056,31 @@ namespace Revit.IFC.Export.Utility
             XYZ curveArcCenter = (additionalTrf == null) ? curveArc.Center : additionalTrf.OfPoint(curveArc.Center);
             XYZ curveArcNormal = (additionalTrf == null) ? curveArc.Normal : additionalTrf.OfVector(curveArc.Normal);
             XYZ curveArcXDirection = (additionalTrf == null) ? curveArc.XDirection : additionalTrf.OfVector(curveArc.XDirection);
+
             if (curveArcCenter == null || curveArcNormal == null || curveArcXDirection == null)
             {
                // encounter invalid curve, return null
                return null;
             }
             IFCAnyHandle location3D = XYZtoIfcCartesianPoint(exporterIFC, curveArcCenter, cartesianPoints, additionalTrf);
+
             // Create the z-direction
             IFCAnyHandle axis = VectorToIfcDirection(exporterIFC, curveArcNormal);
+
             // Create the x-direction
             IFCAnyHandle refDirection = VectorToIfcDirection(exporterIFC, curveArcXDirection);
+
             IFCAnyHandle position3D = IFCInstanceExporter.CreateAxis2Placement3D(file, location3D, axis, refDirection);
             IFCAnyHandle circle = IFCInstanceExporter.CreateCircle(file, position3D, UnitUtil.ScaleLength(curveArc.Radius));
+
             IFCAnyHandle startPoint = XYZtoIfcCartesianPoint(exporterIFC, curveArc.GetEndPoint(0), cartesianPoints, additionalTrf);
             HashSet<IFCData> trim1 = new HashSet<IFCData>();
             trim1.Add(IFCData.CreateIFCAnyHandle(startPoint));
+
             IFCAnyHandle endPoint = XYZtoIfcCartesianPoint(exporterIFC, curveArc.GetEndPoint(1), cartesianPoints, additionalTrf);
             HashSet<IFCData> trim2 = new HashSet<IFCData>();
             trim2.Add(IFCData.CreateIFCAnyHandle(endPoint));
+
             ifcCurve = IFCInstanceExporter.CreateTrimmedCurve(file, circle, trim1, trim2, true, IFCTrimmingPreference.Cartesian);
          }
          // If curve is an ellipse or elliptical Arc type
@@ -4019,18 +4090,26 @@ namespace Revit.IFC.Export.Utility
             IList<double> direction = new List<double>();
             XYZ ellipseNormal = (additionalTrf == null) ? curveEllipse.Normal : additionalTrf.OfVector(curveEllipse.Normal);
             XYZ ellipseXDirection = (additionalTrf == null) ? curveEllipse.XDirection : additionalTrf.OfVector(curveEllipse.XDirection);
+
             IFCAnyHandle location3D = XYZtoIfcCartesianPoint(exporterIFC, curveEllipse.Center, cartesianPoints, additionalTrf);
+
             IFCAnyHandle axis = VectorToIfcDirection(exporterIFC, ellipseNormal);
+
             // Create the x-direction
             IFCAnyHandle refDirection = VectorToIfcDirection(exporterIFC, ellipseXDirection);
+
             IFCAnyHandle position = IFCInstanceExporter.CreateAxis2Placement3D(file, location3D, axis, refDirection);
+
             IFCAnyHandle ellipse = IFCInstanceExporter.CreateEllipse(file, position, UnitUtil.ScaleLength(curveEllipse.RadiusX), UnitUtil.ScaleLength(curveEllipse.RadiusY));
+
             IFCAnyHandle startPoint = XYZtoIfcCartesianPoint(exporterIFC, curveEllipse.GetEndPoint(0), cartesianPoints, additionalTrf);
             HashSet<IFCData> trim1 = new HashSet<IFCData>();
             trim1.Add(IFCData.CreateIFCAnyHandle(startPoint));
+
             IFCAnyHandle endPoint = XYZtoIfcCartesianPoint(exporterIFC, curveEllipse.GetEndPoint(1), cartesianPoints, additionalTrf);
             HashSet<IFCData> trim2 = new HashSet<IFCData>();
             trim2.Add(IFCData.CreateIFCAnyHandle(endPoint));
+
             ifcCurve = IFCInstanceExporter.CreateTrimmedCurve(file, ellipse, trim1, trim2, true, IFCTrimmingPreference.Cartesian);
          }
          else if (allowAdvancedCurve && (curve is HermiteSpline || curve is NurbSpline))
@@ -4048,6 +4127,7 @@ namespace Revit.IFC.Export.Utility
             {
                nurbSpline = curve as NurbSpline;
             }
+
             int degree = nurbSpline.Degree;
             IList<XYZ> controlPoints = nurbSpline.CtrlPoints;
             IList<IFCAnyHandle> controlPointsInIfc = new List<IFCAnyHandle>();
@@ -4055,17 +4135,22 @@ namespace Revit.IFC.Export.Utility
             {
                controlPointsInIfc.Add(XYZtoIfcCartesianPoint(exporterIFC, xyz, cartesianPoints, additionalTrf));
             }
+
             // Based on IFC4 specification, curveForm is for information only, leave it as UNSPECIFIED for now.
             Revit.IFC.Export.Toolkit.IFC4.IFCBSplineCurveForm curveForm = Toolkit.IFC4.IFCBSplineCurveForm.UNSPECIFIED;
+
             IFCLogical closedCurve = nurbSpline.IsClosed ? IFCLogical.True : IFCLogical.False;
+
             // Based on IFC4 specification, selfIntersect is for information only, leave it as Unknown for now
             IFCLogical selfIntersect = IFCLogical.Unknown;
+
             // Unlike Revit, IFC uses 2 lists to store knots information. The first list contain every distinct knot, 
             // and the second list stores the multiplicities of each knot. The following code creates those 2 lists  
             // from the Knots property of Revit NurbSpline
             DoubleArray revitKnots = nurbSpline.Knots;
             IList<double> ifcKnots = new List<double>();
             IList<int> knotMultiplitices = new List<int>();
+
             foreach (double knot in revitKnots)
             {
                if (ifcKnots.Count == 0 || !MathUtil.IsAlmostEqual(knot, ifcKnots[ifcKnots.Count - 1]))
@@ -4078,8 +4163,10 @@ namespace Revit.IFC.Export.Utility
                   knotMultiplitices[knotMultiplitices.Count - 1]++;
                }
             }
+
             // Based on IFC4 specification, knotSpec is for information only, leave it as UNSPECIFIED for now.
             Toolkit.IFC4.IFCKnotType knotSpec = Toolkit.IFC4.IFCKnotType.UNSPECIFIED;
+
             if (!nurbSpline.isRational)
             {
                ifcCurve = IFCInstanceExporter.CreateBSplineCurveWithKnots
@@ -4212,10 +4299,12 @@ namespace Revit.IFC.Export.Utility
 
             IFCAnyHandle location3D = XYZtoIfcCartesianPoint(exporterIFC, curveEllipse.Center, cartesianPoints, additionalTrf);
 
-            IFCAnyHandle axis = VectorToIfcDirection(exporterIFC, ellipseNormal);
+            // No need to transform to IFC coordinates anymore
+            IFCAnyHandle axis = ExporterUtil.CreateDirection(file, ellipseNormal);
 
             // Create the x-direction
-            IFCAnyHandle refDirection = VectorToIfcDirection(exporterIFC, ellipseXDirection);
+            // No need to transform to IFC coordinates anymore
+            IFCAnyHandle refDirection = ExporterUtil.CreateDirection(file, ellipseXDirection);
 
             IFCAnyHandle position = IFCInstanceExporter.CreateAxis2Placement3D(file, location3D, axis, refDirection);
 
@@ -4876,6 +4965,12 @@ namespace Revit.IFC.Export.Utility
          UseNegZ
       }
 
+      private static bool UseThisDirection(double dirComp, double normComp, double eps)
+      {
+         return (MathUtil.IsAlmostEqual(dirComp, 1.0) && normComp > eps) ||
+            (MathUtil.IsAlmostEqual(dirComp, -1.0) && normComp < eps);
+      }
+
       /// <summary>
       /// Get the largest face from a Solid
       /// </summary>
@@ -4894,26 +4989,15 @@ namespace Revit.IFC.Export.Utility
          if (geomSolid == null)
             return largestFace;
 
+         double eps = MathUtil.Eps();
          foreach (Face face in geomSolid.Faces)
          {
             // Identifying the largest area with normal pointing up
             XYZ faceNormal = face.ComputeNormal(new UV());
 
-            bool useThisFace = false;
-            if (MathUtil.IsAlmostEqual(normalDirection.X, 1.0) && faceNormal.X > 0)
-               useThisFace = true;
-            else if (MathUtil.IsAlmostEqual(normalDirection.Y, 1.0) && faceNormal.Y > 0)
-               useThisFace = true;
-            else if (MathUtil.IsAlmostEqual(normalDirection.Z, 1.0) && faceNormal.Z > 0)
-               useThisFace = true;
-            else if (MathUtil.IsAlmostEqual(normalDirection.X, -1.0) && faceNormal.X < 0)
-               useThisFace = true;
-            else if (MathUtil.IsAlmostEqual(normalDirection.Y, -1.0) && faceNormal.Y < 0)
-               useThisFace = true;
-            else if (MathUtil.IsAlmostEqual(normalDirection.Z, -1.0) && faceNormal.Z < 0)
-               useThisFace = true;
-
-            if (!useThisFace)
+            if (!UseThisDirection(normalDirection.X, faceNormal.X, eps) &&
+               !UseThisDirection(normalDirection.Y, faceNormal.Y, eps) &&
+               !UseThisDirection(normalDirection.Z, faceNormal.Z, eps))
                continue;
 
             if (face.Area > largestArea)
@@ -5016,13 +5100,16 @@ namespace Revit.IFC.Export.Utility
 
             BasePoint surveyPoint = BasePoint.GetSurveyPoint(doc);
             BasePoint projectBasePoint = BasePoint.GetProjectBasePoint(doc);
+            if (surveyPoint == null || projectBasePoint == null)
+               return trf;
+
             (double svNorthings, double svEastings, double svElevation, double svAngle, double pbNorthings,
                double pbEastings, double pbElevation, double pbAngle) = OptionsUtil.ProjectLocationInfo(doc, surveyPoint.Position, projectBasePoint.Position);
 
             SiteTransformBasis transformBasis = ExporterCacheManager.ExportOptionsCache.SiteTransformation;
 
             trf = Transform.Identity;
-            Transform rotationTrfAtInternal = Transform.CreateRotationAtPoint(new XYZ(0, 0, 1), pbAngle, XYZ.Zero);
+            Transform rotationTrfAtInternal = Transform.CreateRotationAtPoint(XYZ.BasisZ, pbAngle, XYZ.Zero);
 
             // For Linked file, the WCS should always be based on the shared coordinates
             if (!ExporterCacheManager.ExportOptionsCache.ExportingLink)
@@ -5065,37 +5152,6 @@ namespace Revit.IFC.Export.Utility
             }
          }
          return trf;
-      }
-
-      /// <summary>
-      /// Compute the relative Transform due to offset of the Site placement to the Internal (when different coordinate based is used)
-      /// </summary>
-      /// <param name="origUnscaledTransform">The original unscaled Transform</param>
-      /// <returns>The new offset transform (unscaled)</returns>
-      public static Transform CoordRefOffsetTransform(Transform origUnscaledTransform)
-      {
-         Transform sitePl = new Transform(CoordReferenceInfo.MainModelCoordReferenceOffset);
-         Transform offsetTrf = new Transform(origUnscaledTransform);
-         XYZ offset = XYZ.Zero;
-         if (ExporterCacheManager.ExportOptionsCache.SiteTransformation == SiteTransformBasis.InternalInTN
-            || ExporterCacheManager.ExportOptionsCache.SiteTransformation == SiteTransformBasis.ProjectInTN
-            || ExporterCacheManager.ExportOptionsCache.SiteTransformation == SiteTransformBasis.Shared
-            || ExporterCacheManager.ExportOptionsCache.SiteTransformation == SiteTransformBasis.Site)
-         {
-            // For those that oriented in the TN, a rotation is needed to compute a correct offset in TN orientation
-            Transform rotationTrfAtInternal = Transform.CreateRotationAtPoint(new XYZ(0, 0, 1), CoordReferenceInfo.MainModelTNAngle, XYZ.Zero);
-            offset = rotationTrfAtInternal.OfPoint(offsetTrf.Origin) - sitePl.Origin;
-         }
-         else
-         {
-            offset = offsetTrf.Origin - sitePl.Origin;
-         }
-         sitePl.Origin = XYZ.Zero;
-         offsetTrf.Origin = XYZ.Zero;
-         Transform linkTotTrf = Transform.Identity;
-         linkTotTrf.Origin = offset;
-
-         return linkTotTrf;
       }
    }
 }

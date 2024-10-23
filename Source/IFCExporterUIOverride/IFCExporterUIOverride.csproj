@@ -9,7 +9,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>BIM.IFC.Export.UI</RootNamespace>
-    <AssemblyName>IFCExportUIOverride</AssemblyName>
+    <AssemblyName>IFCExporterUIOverride</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
@@ -50,22 +50,23 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <DefineConstants>TRACE;DEBUG;IFC_OPENSOURCE</DefineConstants>
+    <OutputPath>C:\ProgramData\Autodesk\ApplicationPlugins\IFC 2022.bundle\Contents\2022\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <DefineConstants>TRACE;IFC_OPENSOURCE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Autodesk.UI.Windows">
-      <HintPath>C:\Program Files\Autodesk\Revit 2022\Autodesk.UI.Windows.dll</HintPath>
+      <HintPath>..\..\..\..\2022_Revit_API\Autodesk.UI.Windows.dll</HintPath>
     </Reference>
     <Reference Include="RevitAPI">
-      <HintPath>C:\Program Files\Autodesk\Revit 2022\RevitAPI.dll</HintPath>
+      <HintPath>..\..\..\..\2022_Revit_API\RevitAPI.dll</HintPath>
     </Reference>
     <Reference Include="RevitAPIIFC">
-      <HintPath>C:\Program Files\Autodesk\Revit 2022\RevitAPIIFC.dll</HintPath>
+      <HintPath>..\..\..\..\2022_Revit_API\RevitAPIIFC.dll</HintPath>
     </Reference>
     <Reference Include="RevitAPIUI">
-      <HintPath>C:\Program Files\Autodesk\Revit 2022\RevitAPIUI.dll</HintPath>
+      <HintPath>..\..\..\..\2022_Revit_API\RevitAPIUI.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.Composition" />
@@ -82,7 +83,7 @@
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
     <Reference Include="UserInterfaceUtility">
-      <HintPath>C:\Program Files\Autodesk\Revit 2022\UserInterfaceUtility.dll</HintPath>
+      <HintPath>..\..\..\..\2022_Revit_API\UserInterfaceUtility.dll</HintPath>
     </Reference>
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
@@ -102,6 +103,8 @@
     <Compile Include="IFCClassificationUI.xaml.cs">
       <DependentUpon>IFCClassificationUI.xaml</DependentUpon>
     </Compile>
+    <Compile Include="IFCEntityTree\EntityTree.xaml.cs" />
+    <Compile Include="IFCEntityTree\PredefinedTypeSelection.xaml.cs" />
     <Compile Include="IFCEnumExtensions.cs" />
     <Compile Include="IFCExchangeRequirements.cs" />
     <Compile Include="IFCExportFailuresContainer.cs" />
@@ -204,6 +207,14 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="IFCEntityTree\EntityTree.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="IFCEntityTree\PredefinedTypeSelection.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="IFCFileHeaderInformationUI.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -245,6 +256,10 @@
     <ProjectReference Include="..\Revit.IFC.EntityTree\Revit.IFC.EntityTree.csproj">
       <Project>{5fc56ba3-315a-444b-ac6b-81aacf727517}</Project>
       <Name>Revit.IFC.EntityTree</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Revit.IFC.Export\Revit.IFC.Export.csproj">
+      <Project>{bce5141a-291b-4cd8-a69b-7b9345aa00e9}</Project>
+      <Name>Revit.IFC.Export</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project=".\IFCExporterUIOverride.props" />

@@ -19,11 +19,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using Autodesk.Revit;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.IFC;
-using Revit.IFC.Export.Exporter.PropertySet;
 
 namespace Revit.IFC.Export.Utility
 {
@@ -58,9 +55,9 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
-      /// Clears parameter cache.
+      /// Clears the parameter value caches.
       /// </summary>
-      public static void ClearParameterCache()
+      public static void ClearParameterValueCaches()
       {
          m_NonIFCParameters.Clear();
          m_IFCParameters.Clear();
@@ -74,7 +71,7 @@ namespace Revit.IFC.Export.Utility
             return null;
 
          ElementId elementId = element.Id;
-         Parameter parameter = GetParameterFromName(elementId, null, propertyName);
+         Parameter parameter = GetParameterFromName(elementId, propertyName);
 
          if (parameter == null)
             return null;
@@ -132,15 +129,16 @@ namespace Revit.IFC.Export.Utility
       /// <returns>The parameter, or null if not found.</returns>
       public static Parameter GetIntValueFromElement(Element element, string propertyName, out int propertyValue)
       {
-         if (String.IsNullOrEmpty(propertyName))
-            throw new ArgumentException("The name is null or empty.", "propertyName");
-
          propertyValue = 0;
+
+         if (String.IsNullOrEmpty(propertyName))
+            //throw new ArgumentException("The name is null or empty.", "propertyName");
+            return null;
 
          if (element == null)
             return null;
 
-         Parameter parameter = GetParameterFromName(element.Id, null, propertyName);
+         Parameter parameter = GetParameterFromName(element.Id, propertyName);
          if (parameter != null && parameter.HasValue)
          {
             switch (parameter.StorageType)
@@ -181,7 +179,7 @@ namespace Revit.IFC.Export.Utility
          return null;
       }
 
-      public static Parameter GetDoubleValueFromElement(Element element, BuiltInParameterGroup? group, string propertyName, 
+      public static Parameter GetDoubleValueFromElement(Element element, BuiltInParameterGroup? group, string propertyName,
          bool disallowInternalMatch, out double propertyValue)
       {
          ForgeTypeId unitType;
@@ -209,11 +207,12 @@ namespace Revit.IFC.Export.Utility
       /// <returns>The parameter, or null if not found.</returns>
       public static Parameter GetDoubleValueFromElement(Element element, BuiltInParameterGroup? group, string propertyName, out double propertyValue, out ForgeTypeId unitType)
       {
-         if (String.IsNullOrEmpty(propertyName))
-            throw new ArgumentException("It is null or empty.", "propertyName");
-
          propertyValue = 0.0;
          unitType = null;
+
+         if (String.IsNullOrEmpty(propertyName))
+            //throw new ArgumentException("It is null or empty.", "propertyName");
+            return null;
 
          if (element == null)
             return null;
@@ -242,7 +241,7 @@ namespace Revit.IFC.Export.Utility
                         unitType = pResv.UnitType;
                         return parameter;
                      }
-                     return Double.TryParse(propValue, out propertyValue) ? parameter : null;
+                     return double.TryParse(propValue, out propertyValue) ? parameter : null;
                   }
             }
          }
@@ -404,7 +403,8 @@ namespace Revit.IFC.Export.Utility
       /// <param name="builtInParameter">The built-in parameter.</param>
       /// <param name="propertyValue">The output property value.</param>
       /// <returns>The parameter, or null if not found.</returns>
-      public static Parameter GetDoubleValueFromElementOrSymbol(Element element, BuiltInParameter builtInParameter, out double propertyValue)
+      public static Parameter GetDoubleValueFromElementOrSymbol(Element element, 
+         BuiltInParameter builtInParameter, out double propertyValue)
       {
          propertyValue = 0.0;
          if (element == null)
@@ -439,7 +439,7 @@ namespace Revit.IFC.Export.Utility
          bool disallowInternalMatch, out double propertyValue)
       {
          propertyValue = 0.0;
-         if (element == null)
+         if (element == null || string.IsNullOrEmpty(propertyName))
             return null;
 
          Parameter parameter = GetDoubleValueFromElement(element, null, propertyName, out propertyValue);
@@ -471,10 +471,28 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">The element, which can be null.</param>
       /// <param name="propertyName">The property name.</param>
       /// <param name="propertyValue">The output property value.</param>
+      /// <param name="alternateNames">the variable array of alternate names mainly to support backward compatibility</param>
       /// <returns>The parameter, or null if not found.</returns>
-      public static Parameter GetDoubleValueFromElementOrSymbol(Element element, string propertyName, out double propertyValue)
+      public static Parameter GetDoubleValueFromElementOrSymbol(Element element, 
+         string propertyName, out double propertyValue, params string[] alternateNames)
       {
-         return GetDoubleValueFromElementOrSymbol(element, propertyName, false, out propertyValue);
+         propertyValue = 0.0;
+         if (string.IsNullOrEmpty(propertyName))
+            return null;
+
+         Parameter parameter;
+         parameter = GetDoubleValueFromElementOrSymbol(element, propertyName, false, out propertyValue);
+         if (parameter == null && alternateNames != null && alternateNames.Length > 0)
+         {
+            foreach (string altName in alternateNames)
+            {
+               parameter = GetDoubleValueFromElementOrSymbol(element, altName, false, out propertyValue);
+               if (parameter != null)
+                  break;
+            }
+         }
+
+         return parameter;
       }
 
       /// <summary>
@@ -483,10 +501,11 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">The element.</param>
       /// <param name="propertyName">The property name.</param>
       /// <param name="propertyValue">The output property value.</param>
+      /// <param name="alternateNames">the variable array of alternate names mainly to support backward compatibility</param>
       /// <returns>The parameter, or null if not found.</returns>
-      public static Parameter GetPositiveDoubleValueFromElementOrSymbol(Element element, string propertyName, out double propertyValue)
+      public static Parameter GetPositiveDoubleValueFromElementOrSymbol(Element element, string propertyName, out double propertyValue, params string[] alternateNames)
       {
-         Parameter parameter = GetDoubleValueFromElementOrSymbol(element, propertyName, out propertyValue);
+         Parameter parameter = GetDoubleValueFromElementOrSymbol(element, propertyName, out propertyValue, alternateNames);
          if ((parameter != null) && (propertyValue > 0.0))
             return parameter;
          return null;
@@ -555,7 +574,7 @@ namespace Revit.IFC.Export.Utility
             if (param.Definition == null)
                continue;
 
-            // Limit to the parameter(s) within builtin parameter group PG_MATERIALS
+            // Limit to the parameter(s) within builtin parameter group GroupTypeId::Materials
             if (param.Definition.GetDataType() == SpecTypeId.Reference.Material && param.Definition.ParameterGroup == BuiltInParameterGroup.PG_MATERIALS)
             {
                materialIds.Add(param.AsElementId());
@@ -581,7 +600,11 @@ namespace Revit.IFC.Export.Utility
          foreach (ParameterElementCache otherCache in m_NonIFCParameters[elementId].Values)
          {
             if (otherCache.ParameterCache.TryGetValue(cleanPropertyName, out parameter))
-               return parameter;
+            {
+               parameter = ValidateParameter(parameter);
+               if (parameter != null)
+                  return parameter;
+            }
          }
 
          return parameter;
@@ -697,8 +720,8 @@ namespace Revit.IFC.Export.Utility
          if (parameterIds.Size == 0)
             return;
 
-         IDictionary<int, KeyValuePair<string, Parameter>> stableSortedParameterSet =
-            new SortedDictionary<int, KeyValuePair<string, Parameter>>();
+         IDictionary<long, KeyValuePair<string, Parameter>> stableSortedParameterSet =
+            new SortedDictionary<long, KeyValuePair<string, Parameter>>();
 
          // We will do two passes.  In the first pass, we will look at parameters in the IFC group.
          // In the second pass, we will look at all other groups.
@@ -836,6 +859,34 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
+      /// Gets the parameter by name from an element.
+      /// </summary>
+      /// <param name="elemId">The element id.</param>
+      /// <param name="propertyName">The property name.</param>
+      /// <returns>The Parameter.</returns>
+      internal static Parameter GetParameterFromName(ElementId elemId, string propertyName)
+      {
+         if (!m_IFCParameters.ContainsKey(elemId))
+            CacheParametersForElement(elemId);
+
+         return getParameterByNameFromCache(elemId, propertyName);
+      }
+
+      private static HashSet<BuiltInParameter> MisleadingParameters { get; } =
+         new HashSet<BuiltInParameter>()
+         {
+            BuiltInParameter.ANALYTICAL_ROUGHNESS,
+            BuiltInParameter.ELEM_CATEGORY_PARAM
+         };
+
+      internal static Parameter ValidateParameter(Parameter parameter)
+      {
+         if (MisleadingParameters.Contains((BuiltInParameter)parameter.Id.IntegerValue))
+            return null;
+         return parameter;
+      }
+
+      /// <summary>
       /// Gets the parameter by name from an element for a specific parameter group.
       /// </summary>
       /// <param name="elemId">The element id.</param>
@@ -852,14 +903,21 @@ namespace Revit.IFC.Export.Utility
              getParameterByNameFromCache(elemId, propertyName);
       }
 
-      private static Parameter GetStringValueFromElementOrSymbolBase(Element element, Element elementType, string propertyName, bool allowUnset, out string propertyValue)
+      private static Parameter GetStringValueFromElementOrSymbolBase(Element element, Element elementType, string propertyName, bool allowUnset, 
+         out string propertyValue, params string[] alternateNames)
       {
          Parameter parameter = GetStringValueFromElementBase(element, propertyName, allowUnset, out propertyValue);
-         if (parameter != null)
+         if (parameter == null && alternateNames != null && alternateNames.Length > 0)
          {
-            if (!string.IsNullOrEmpty(propertyValue))
-               return parameter;
+            foreach (string altName in alternateNames)
+            {
+               parameter = GetStringValueFromElementBase(element, altName, allowUnset, out propertyValue);
+               if (parameter != null)
+                  return parameter;
+            }
          }
+         else if (parameter != null && !string.IsNullOrEmpty(propertyValue))
+               return parameter;
 
          if (elementType == null)
             elementType = element.Document.GetElement(element.GetTypeId());
@@ -868,10 +926,22 @@ namespace Revit.IFC.Export.Utility
          {
             parameter = GetStringValueFromElementBase(elementType, propertyName, allowUnset, out propertyValue);
             if (parameter == null)
-            {
                parameter = GetStringValueFromElementBase(elementType, propertyName + "[Type]", allowUnset, out propertyValue);
+
+            if (parameter == null && alternateNames != null && alternateNames.Length > 0)
+            {
+               foreach (string altName in alternateNames)
+               {
+                  parameter = GetStringValueFromElementBase(elementType, altName, allowUnset, out propertyValue);
+                  if (parameter == null)
+                     parameter = GetStringValueFromElementBase(elementType, altName + "[Type]", allowUnset, out propertyValue);
+
+                  if (parameter != null)
+                     return parameter;
+               }
             }
          }
+
          return parameter;
       }
 
@@ -881,10 +951,11 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">The element.</param>
       /// <param name="propertyName">The property name.</param>
       /// <param name="propertyValue">The output property value.</param>
+      /// <param name="alternateNames">the variable array of alternate names mainly to support backward compatibility</param>
       /// <returns>The parameter, or null if not found.</returns>
-      public static Parameter GetStringValueFromElementOrSymbol(Element element, string propertyName, out string propertyValue)
+      public static Parameter GetStringValueFromElementOrSymbol(Element element, string propertyName, out string propertyValue, params string[] alternateNames)
       {
-         return GetStringValueFromElementOrSymbolBase(element, null, propertyName, false, out propertyValue);
+         return GetStringValueFromElementOrSymbolBase(element, null, propertyName, false, out propertyValue, alternateNames);
       }
 
       /// <summary>
@@ -893,10 +964,11 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">The element.</param>
       /// <param name="propertyName">The property name.</param>
       /// <param name="propertyValue">The output property value.</param>
+      /// <param name="alternateNames">the variable array of alternate names mainly to support backward compatibility</param>
       /// <returns>The parameter, or null if not found.</returns>
-      public static Parameter GetStringValueFromElementOrSymbol(Element element, Element elementType, string propertyName, out string propertyValue)
+      public static Parameter GetStringValueFromElementOrSymbol(Element element, Element elementType, string propertyName, out string propertyValue, params string[] alternateNames)
       {
-         return GetStringValueFromElementOrSymbolBase(element, elementType, propertyName, false, out propertyValue);
+         return GetStringValueFromElementOrSymbolBase(element, elementType, propertyName, false, out propertyValue, alternateNames);
       }
 
       /// <summary>
@@ -905,10 +977,11 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">The element.</param>
       /// <param name="propertyName">The property name.</param>
       /// <param name="propertyValue">The output property value.</param>
+      /// <param name="alternateNames">the variable array of alternate names mainly to support backward compatibility</param>
       /// <returns>The parameter, or null if not found.</returns>
-      public static Parameter GetOptionalStringValueFromElementOrSymbol(Element element, string propertyName, out string propertyValue)
+      public static Parameter GetOptionalStringValueFromElementOrSymbol(Element element, string propertyName, out string propertyValue, params string[] alternateNames)
       {
-         return GetStringValueFromElementOrSymbolBase(element, null, propertyName, true, out propertyValue);
+         return GetStringValueFromElementOrSymbolBase(element, null, propertyName, true, out propertyValue, alternateNames);
       }
 
       /// <summary>
@@ -916,14 +989,25 @@ namespace Revit.IFC.Export.Utility
       /// </summary>
       /// <param name="element">The element, which can be null.</param>
       /// <param name="propertyName">The property name.</param>
+      /// <param name="alternateNames">the variable array of alternate names mainly to support backward compatibility</param>
       /// <returns>The property value, or null if not found.</returns>
-      public static int? GetIntValueFromElementOrSymbol(Element element, string propertyName)
+      public static int? GetIntValueFromElementOrSymbol(Element element, string propertyName, params string[] alternateNames)
       {
-         if (element == null)
+         if (element == null || string.IsNullOrEmpty(propertyName))
             return null;
 
          int propertyValue = 0;
-         if (GetIntValueFromElement(element, propertyName, out propertyValue) != null)
+         Parameter parameter = GetIntValueFromElement(element, propertyName, out propertyValue);
+         if (parameter == null && alternateNames != null && alternateNames.Length > 0)
+         {
+            foreach (string altName in alternateNames)
+            {
+               parameter = GetIntValueFromElement(element, altName, out propertyValue);
+               if (parameter != null)
+                  return propertyValue;
+            }
+         }
+         else if (parameter != null)
             return propertyValue;
 
          bool isElementType = element is ElementType;
@@ -934,7 +1018,17 @@ namespace Revit.IFC.Export.Utility
             elemType = element.Document.GetElement(element.GetTypeId());
             if (elemType != null)
             {
-               if (GetIntValueFromElement(elemType, propertyName, out propertyValue) != null)
+               parameter = GetIntValueFromElement(elemType, propertyName, out propertyValue);
+               if (parameter == null && alternateNames != null && alternateNames.Length > 0)
+               {
+                  foreach (string altName in alternateNames)
+                  {
+                     parameter = GetIntValueFromElement(element, altName, out propertyValue);
+                     if (parameter != null)
+                        return propertyValue;
+                  }
+               }
+               else if (parameter != null)
                   return propertyValue;
             }
          }
@@ -945,7 +1039,17 @@ namespace Revit.IFC.Export.Utility
 
          if (elemType != null)
          {
-            if (GetIntValueFromElement(elemType, propertyName + "[Type]", out propertyValue) != null)
+            parameter = GetIntValueFromElement(elemType, propertyName + "[Type]", out propertyValue);
+            if (parameter == null && alternateNames != null && alternateNames.Length > 0)
+            {
+               foreach (string altName in alternateNames)
+               {
+                  parameter = GetIntValueFromElement(element, altName + "[Type]", out propertyValue);
+                  if (parameter != null)
+                     return propertyValue;
+               }
+            }
+            else if (parameter != null)
                return propertyValue;
          }
 

@@ -36,7 +36,7 @@ namespace Revit.IFC.Export.Utility
    public class ExporterCacheManager
    {
       /// <summary>
-      /// The AssemblyInstanceCache object.
+      /// The AllocatedGeometryObjectCache object.
       /// </summary>
       static AllocatedGeometryObjectCache m_AllocatedGeometryObjectCache;
 
@@ -76,12 +76,6 @@ namespace Revit.IFC.Export.Utility
       /// The Classification location cache.
       /// </summary>
       static ClassificationLocationCache m_ClassificationLocationCache;
-
-      static ClassificationReferenceCache m_ClassificationReferenceCache;
-      /// <summary>
-      /// The ContainmentCache object.
-      /// </summary>
-      static ContainmentCache m_ContainmentCache;
 
       /// <summary>
       /// The CurveAnnotationCache object.
@@ -123,11 +117,6 @@ namespace Revit.IFC.Export.Utility
       static IFCAnyHandle m_Global3DOriginHandle = null;
 
       /// <summary>
-      /// The GUID cache.
-      /// </summary>
-      static HashSet<string> m_GUIDCache;
-
-      /// <summary>
       /// The GUIDs to store at the end of export.
       /// </summary>
       static Dictionary<KeyValuePair<ElementId, BuiltInParameter>, string> m_GUIDsToStoreCache;
@@ -148,12 +137,6 @@ namespace Revit.IFC.Export.Utility
       static Dictionary<ElementId, bool> m_IsExternalParameterValueCache;
 
       /// <summary>
-      /// The LevelInfoCache object.  This contains extra information on top of
-      /// IFCLevelInfo, and will eventually replace it.
-      /// </summary>
-      static LevelInfoCache m_LevelInfoCache;
-
-      /// <summary>
       /// The MaterialHandleCache object.
       /// </summary>
       static ElementToHandleCache m_MaterialHandleCache;
@@ -169,12 +152,7 @@ namespace Revit.IFC.Export.Utility
       static MaterialConstituentSetCache m_MaterialConstituentSetCache;
 
       /// <summary>
-      /// The MaterialLayerRelationsCache object.
-      /// </summary>
-      static MaterialSetUsageCache m_MaterialSetUsageCache;
-
-      /// <summary>
-      /// The MaterialLayerSetCache object.
+      /// The MaterialSetCache object.
       /// </summary>
       static MaterialSetCache m_MaterialSetCache;
 
@@ -183,17 +161,12 @@ namespace Revit.IFC.Export.Utility
       /// </summary>
       static MEPCache m_MEPCache;
 
-      /// <summary>
-      /// The MaterialRelationsCache object.
-      /// </summary>
-      static MaterialRelationsCache m_MaterialRelationsCache;
-
       static AttributeCache m_AttributeCache;
 
       /// <summary>
       /// The ParameterCache object.
       /// </summary>
-      static ParameterCache m_ParameterCache;
+      public static ParameterCache ParameterCache { get; set; } = new ParameterCache();
 
       /// <summary>
       /// The PartExportedCache object.
@@ -213,7 +186,7 @@ namespace Revit.IFC.Export.Utility
       /// <summary>
       /// The top level IfcProject handle.
       /// </summary>
-      static IFCAnyHandle m_ProjectHandle;
+      public static IFCAnyHandle ProjectHandle { get; set; } = null;
 
       ///<summary>
       /// The RailingCache cache.
@@ -230,7 +203,7 @@ namespace Revit.IFC.Export.Utility
       /// <summary>
       /// The top level IfcSite handle.
       /// </summary>
-      static IFCAnyHandle m_SiteHandle;
+      public static IFCAnyHandle SiteHandle { get; set; } = null;
 
       /// <summary>
       /// The SpaceBoundaryCache object.
@@ -325,6 +298,11 @@ namespace Revit.IFC.Export.Utility
       static IDictionary<PropertySetKey, IList<PropertySetDescription>> m_PropertySetsForTypeCache;
 
       /// <summary>
+      /// The common predefined property sets to be exported for an entity type, regardless of Object Type.
+      /// </summary>
+      static IDictionary<PropertySetKey, IList<PreDefinedPropertySetDescription>> m_PreDefinedPropertySetsForTypeCache;
+
+      /// <summary>
       /// The material id to style handle cache.
       /// </summary>
       static ElementToHandleCache m_MaterialIdToStyleHandleCache;
@@ -404,12 +382,17 @@ namespace Revit.IFC.Export.Utility
       static public IDictionary<IFCAnyHandle, HashSet<IFCAnyHandle>> ComplexPropertyCache { get; set; } = new Dictionary<IFCAnyHandle, HashSet<IFCAnyHandle>>();
 
       /// <summary>
+
+      /// Cache for Base Quantities that require separate calculation.
+      /// </summary>
+      static public IDictionary<IFCAnyHandle, HashSet<IFCAnyHandle>> BaseQuantitiesCache { get; set; } = new Dictionary<IFCAnyHandle, HashSet<IFCAnyHandle>>();
+
       /// Cache for information whether a QuantitySet specified in the Dict. value has been created for the elementHandle
       /// </summary>
       static public HashSet<(IFCAnyHandle, string)> QtoSetCreated { get; set; } = new HashSet<(IFCAnyHandle, string)>();
 
       /// <summary>
-      /// The ParameterCache object.
+      /// The AllocatedGeometryObjectCache object.
       /// </summary>
       public static AllocatedGeometryObjectCache AllocatedGeometryObjectCache
       {
@@ -475,17 +458,14 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
+      /// The base guid to use for all entities when exporting, used when exporting linked documents.
+      /// </summary>
+      public static string BaseLinkedDocumentGUID { get; set; } = null;
+      
+      /// <summary>
       /// The GUIDCache object.
       /// </summary>
-      public static HashSet<string> GUIDCache
-      {
-         get
-         {
-            if (m_GUIDCache == null)
-               m_GUIDCache = new HashSet<string>();
-            return m_GUIDCache;
-         }
-      }
+      public static HashSet<string> GUIDCache { get; } = new HashSet<string>();
 
       /// <summary>
       /// The GUIDs to store in elements at the end of export, if the option to store GUIDs has been selected.
@@ -538,19 +518,6 @@ namespace Revit.IFC.Export.Utility
             if (m_AttributeCache == null)
                m_AttributeCache = new AttributeCache();
             return m_AttributeCache;
-         }
-      }
-
-/// <summary>
-/// The ParameterCache object.
-/// </summary>
-public static ParameterCache ParameterCache
-      {
-         get
-         {
-            if (m_ParameterCache == null)
-               m_ParameterCache = new ParameterCache();
-            return m_ParameterCache;
          }
       }
 
@@ -615,24 +582,6 @@ public static ParameterCache ParameterCache
       /// The top level IfcOwnerHistory handle.
       /// </summary>
       public static IFCAnyHandle OwnerHistoryHandle { get; set; } = null;
-
-      /// <summary>
-      /// The top level IfcProject handle.
-      /// </summary>
-      public static IFCAnyHandle ProjectHandle
-      {
-         get { return m_ProjectHandle; }
-         set { m_ProjectHandle = value; }
-      }
-
-      /// <summary>
-      /// The top level IfcSite handle.
-      /// </summary>
-      public static IFCAnyHandle SiteHandle
-      {
-         get { return m_SiteHandle; }
-         set { m_SiteHandle = value; }
-      }
 
       /// <summary>
       /// The CurveAnnotationCache object.
@@ -781,28 +730,14 @@ public static ParameterCache ParameterCache
       /// <summary>
       /// The MaterialRelationsCache object.
       /// </summary>
-      public static MaterialRelationsCache MaterialRelationsCache
-      {
-         get
-         {
-            if (m_MaterialRelationsCache == null)
-               m_MaterialRelationsCache = new MaterialRelationsCache();
-            return m_MaterialRelationsCache;
-         }
-      }
-
+      public static MaterialRelationsCache MaterialRelationsCache { get; private set;  } = 
+         new MaterialRelationsCache();
+      
       /// <summary>
       /// The MaterialLayerRelationsCache object.
       /// </summary>
-      public static MaterialSetUsageCache MaterialLayerRelationsCache
-      {
-         get
-         {
-            if (m_MaterialSetUsageCache == null)
-               m_MaterialSetUsageCache = new MaterialSetUsageCache();
-            return m_MaterialSetUsageCache;
-         }
-      }
+      public static MaterialSetUsageCache MaterialSetUsageCache { get; private set; } = 
+         new MaterialSetUsageCache();
 
       /// <summary>
       /// The RailingCache object.
@@ -1026,16 +961,7 @@ public static ParameterCache ParameterCache
       /// <summary>
       /// The ContainmentCache object.
       /// </summary>
-      public static ContainmentCache ContainmentCache
-      {
-         get
-         {
-            if (m_ContainmentCache == null)
-               m_ContainmentCache = new ContainmentCache();
-            return m_ContainmentCache;
-         }
-         set { m_ContainmentCache = value; }
-      }
+      public static ContainmentCache ContainmentCache { get; set; } = new ContainmentCache();
 
       /// <summary>
       /// The ClassificationCache object.
@@ -1045,13 +971,13 @@ public static ParameterCache ParameterCache
          get
          {
             if (m_ClassificationCache == null)
-               m_ClassificationCache = new ClassificationCache(ExporterCacheManager.Document);
+               m_ClassificationCache = new ClassificationCache(Document);
             return m_ClassificationCache;
          }
          set { m_ClassificationCache = value; }
       }
 
-      public static ClassificationLocationCache ClassificationLocationCache
+     public static ClassificationLocationCache ClassificationLocationCache
       {
          get
          {
@@ -1060,17 +986,6 @@ public static ParameterCache ParameterCache
             return m_ClassificationLocationCache;
          }
          set { m_ClassificationLocationCache = value; }
-      }
-
-      public static ClassificationReferenceCache ClassificationReferenceCache
-      {
-         get
-         {
-            if (m_ClassificationReferenceCache == null)
-               m_ClassificationReferenceCache = new ClassificationReferenceCache();
-            return m_ClassificationReferenceCache;
-         }
-         set { m_ClassificationReferenceCache = value; }
       }
 
       /// <summary>
@@ -1114,23 +1029,10 @@ public static ParameterCache ParameterCache
       }
 
       /// <summary>
-      /// Contains transformation which defines World Coordinate System of Host Revit file.
-      /// HostRvtFileWCS.Origin must store unscaled values.
+      /// The LevelInfoCache object.  This contains extra information on top of
+      /// IFCLevelInfo, and will eventually replace it.
       /// </summary>
-      public static Transform HostRvtFileWCS { get; set; } = Transform.Identity;
-
-      /// <summary>
-      /// The LevelInfoCache object.
-      /// </summary>
-      public static LevelInfoCache LevelInfoCache
-      {
-         get
-         {
-            if (m_LevelInfoCache == null)
-               m_LevelInfoCache = new LevelInfoCache();
-            return m_LevelInfoCache;
-         }
-      }
+      public static LevelInfoCache LevelInfoCache { get; set; } = new LevelInfoCache();
 
       /// <summary>
       /// The TypePropertyInfoCache object.
@@ -1158,6 +1060,53 @@ public static ParameterCache ParameterCache
          }
       }
 
+      /// <summary>
+      /// A cache of internally created IfcRoot-derived handles.
+      /// </summary>
+      /// <remarks></remarks>
+      public static IDictionary<IFCAnyHandle, ElementId> InternallyCreatedRootHandles
+      {
+         get
+         {
+            if (m_InternallyCreatedRootHandles == null)
+               m_InternallyCreatedRootHandles = new Dictionary<IFCAnyHandle, ElementId>();
+            return m_InternallyCreatedRootHandles;
+         }
+      }
+      
+      private static IDictionary<IFCAnyHandle, ElementId> m_InternallyCreatedRootHandles;
+
+      private static PropertySetCache m_CreatedSpecialPropertySets;
+
+      private static PropertySetCache m_CreatedInternalPropertySets;
+
+      /// <summary>
+      /// Cache for "special" property sets to make sure we don't re-export them.
+      /// </summary>
+      /// <remarks>
+      /// At the moment, this is only for Pset_Draughting for 2x2.  But really we
+      /// should combine this with CreatedInternalPropertySets.
+      /// </remarks>
+      public static PropertySetCache CreatedSpecialPropertySets
+      {
+         get
+         {
+            if (m_CreatedSpecialPropertySets == null)
+               m_CreatedSpecialPropertySets = new PropertySetCache();
+            return m_CreatedSpecialPropertySets;
+         }
+      }
+
+      public static PropertySetCache CreatedInternalPropertySets
+      {
+         get
+         {
+            if (m_CreatedInternalPropertySets == null)
+               m_CreatedInternalPropertySets = new PropertySetCache();
+            return m_CreatedInternalPropertySets;
+         }
+      }
+      
       /// <summary>
       /// This class is used to identify property set in cache.
       /// Current logic uses a combination of instance type and predefined type
@@ -1248,6 +1197,19 @@ public static ParameterCache ParameterCache
             if (m_PropertySetsForTypeCache == null)
                m_PropertySetsForTypeCache = new Dictionary<PropertySetKey, IList<PropertySetDescription>>();
             return m_PropertySetsForTypeCache;
+         }
+      }
+
+      /// <summary>
+      /// The predefined property sets to be exported for an entity type, regardless of Object Type.
+      /// </summary>
+      public static IDictionary<PropertySetKey, IList<PreDefinedPropertySetDescription>> PreDefinedPropertySetsForTypeCache
+      {
+         get
+         {
+            if (m_PreDefinedPropertySetsForTypeCache == null)
+               m_PreDefinedPropertySetsForTypeCache = new Dictionary<PropertySetKey, IList<PreDefinedPropertySetDescription>>();
+            return m_PreDefinedPropertySetsForTypeCache;
          }
       }
 
@@ -1395,6 +1357,11 @@ public static ParameterCache ParameterCache
       }
 
       /// <summary>
+      /// A cache of offset applied to the host model (from the shared coords) to be used in the Link file
+      /// </summary>
+      public static Transform ScaledTransformOffsetFromSharedCoords { get; set; } = Transform.Identity;
+
+      /// <summary>
       /// Collection of IFC Handles to delete
       /// </summary>
       public static HashSet<IFCAnyHandle> HandleToDeleteCache
@@ -1423,27 +1390,48 @@ public static ParameterCache ParameterCache
       /// <summary>
       /// Clear all caches contained in this manager.
       /// </summary>
-      public static void Clear()
+      public static void Clear(bool fullClear)
       {
+         if (fullClear)
+         {
+            m_CertifiedEntitiesAndPsetCache = null;
+            m_ExportOptionsCache = null;
+            m_Global3DOriginHandle = null;
+            GUIDCache.Clear();
+            OwnerHistoryHandle = null;
+            ParameterCache.Clear();
+            ProjectHandle = null;
+            m_UnitsCache = null;
+         }
+
+         // Special case: if we are sharing the IfcSite, don't clear it after the host
+         // document export.
+         if (fullClear || ExportOptionsCache.ExportLinkedFileAs != LinkedFileExportAs.ExportSameSite)
+         {
+            SiteHandle = null;
+         }
+
          if (m_AllocatedGeometryObjectCache != null)
             m_AllocatedGeometryObjectCache.DisposeCache();
-         ParameterUtil.ClearParameterCache();
+         ParameterUtil.ClearParameterValueCaches();
 
          m_AllocatedGeometryObjectCache = null;
          m_AreaSchemeCache = null;
          m_AssemblyInstanceCache = null;
+         BaseLinkedDocumentGUID = null;
          m_BeamSystemCache = null;
          BuildingHandle = null;
          m_CanExportBeamGeometryAsExtrusionCache = null;
          m_CategoryClassNameCache = null;
          m_CategoryTypeCache = null;
          m_CeilingSpaceRelCache = null;
-         m_CertifiedEntitiesAndPsetCache = null;
          m_ClassificationCache = null;
          m_ClassificationLocationCache = null;
-         m_ClassificationReferenceCache = null;
-         m_ContainmentCache = null;
+         ContainmentCache = new ContainmentCache();
          ComplexPropertyCache.Clear();
+         BaseQuantitiesCache.Clear();
+         m_CreatedInternalPropertySets = null;
+         m_CreatedSpecialPropertySets = null;
          m_CurveAnnotationCache = null;
          m_DBViewsToExport = null;
          m_DefaultCartesianTransformationOperator3D = null;
@@ -1452,42 +1440,37 @@ public static ParameterCache ParameterCache
          m_ElementsInAssembliesCache = null;
          m_ElementToHandleCache = null;
          m_ElementTypeToHandleCache = null;
-         m_ExportOptionsCache = null;
          m_FabricAreaHandleCache = null;
          m_FabricParamsCache = null;
          m_FamilySymbolToTypeInfoCache = null;
-         m_Global3DOriginHandle = null;
          m_GridCache = null;
          m_GroupCache = null;
-         m_GUIDCache = null;
          m_GUIDsToStoreCache = null;
          m_HandleToDelete = null;
          m_HandleToElementCache = null;
          m_HostObjectsLevelIndex = null;
          m_HostPartsCache = null;
+         m_InternallyCreatedRootHandles = null;
          m_IsExternalParameterValueCache = null;
-         m_LevelInfoCache = null;
+         LevelInfoCache = new LevelInfoCache();
          m_MaterialIdToStyleHandleCache = null;
-         m_MaterialSetUsageCache = null;
+         MaterialSetUsageCache = new MaterialSetUsageCache();
          m_MaterialSetCache = null;
          m_MaterialConstituentCache = null;
          m_MaterialConstituentSetCache = null;
          m_MaterialHandleCache = null;
-         m_MaterialRelationsCache = null;
+         MaterialRelationsCache = new MaterialRelationsCache();
          m_MEPCache = null;
          m_Object2DCurves = null;
-         OwnerHistoryHandle = null;
-         m_ParameterCache = null;
          m_PartExportedCache = null;
          m_PresentationLayerSetCache = null;
          m_PresentationStyleCache = null;
-         m_ProjectHandle = null;
          m_PropertyInfoCache = null;
          m_PropertyMapCache = null;
          m_PropertySetsForTypeCache = null;
+         m_PreDefinedPropertySetsForTypeCache = null;
          m_RailingCache = null;
          m_RailingSubElementCache = null;
-         m_SiteHandle = null;
          m_SpaceBoundaryCache = null;
          m_SpaceInfoCache = null;
          m_SpaceOccupantInfoCache = null;
@@ -1499,7 +1482,6 @@ public static ParameterCache ParameterCache
          m_ViewScheduleElementCache = null;
          m_WallConnectionDataCache = null;
          WallCrossSectionCache.Clear();
-         m_UnitsCache = null;
          m_ZoneCache = null;
          m_ZoneInfoCache = null;
          QtoSetCreated.Clear();

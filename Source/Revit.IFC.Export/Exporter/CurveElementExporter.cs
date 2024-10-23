@@ -40,44 +40,36 @@ namespace Revit.IFC.Export.Exporter
       /// <summary>
       /// Checks if the curve element should be exported.
       /// </summary>
-      /// <param name="curveElement">
-      /// The curve element.
-      /// </param>
-      /// <returns>
-      /// True if the curve element should be exported, false otherwise.
-      /// </returns>
+      /// <param name="curveElement">The curve element.</param>
+      /// <returns>True if the curve element should be exported, false otherwise.</returns>
       private static bool ShouldCurveElementBeExported(CurveElement curveElement)
       {
          CurveElementType curveElementType = curveElement.CurveElementType;
-         bool exported = false;
-         if (curveElementType == CurveElementType.ModelCurve || curveElementType == CurveElementType.CurveByPoints)
-            exported = true;
+         if (curveElementType != CurveElementType.ModelCurve &&
+            curveElementType != CurveElementType.CurveByPoints)
+            return false;
 
-         if (exported)
+         // Confirm curve is not used by another element
+         if (ExporterIFCUtils.IsCurveFromOtherElementSketch(curveElement))
+            return false;
+
+         // Confirm the geometry curve is valid.
+         Curve curve = curveElement.GeometryCurve;
+         if (curve == null)
+            return false;
+
+         if (curve is Line)
          {
-            // Confirm curve is not used by another element
-            exported = !ExporterIFCUtils.IsCurveFromOtherElementSketch(curveElement);
+            if (!curve.IsBound)
+               return false;
 
-            // Confirm the geometry curve is valid.
-            Curve curve = curveElement.GeometryCurve;
-
-            if (curve == null)
-               exported = false;
-            else if (curve is Line)
-            {
-               if (!curve.IsBound)
-                  exported = false;
-               else
-               {
-                  XYZ end1 = curve.GetEndPoint(0);
-                  XYZ end2 = curve.GetEndPoint(1);
-                  if (end1.IsAlmostEqualTo(end2))
-                     exported = false;
-               }
-            }
+            XYZ end1 = curve.GetEndPoint(0);
+            XYZ end2 = curve.GetEndPoint(1);
+            if (end1.IsAlmostEqualTo(end2))
+               return false;
          }
 
-         return exported;
+         return true;
       }
 
       /// <summary>
@@ -106,7 +98,7 @@ namespace Revit.IFC.Export.Exporter
             return;
 
          // Check the intended IFC entity or type name is in the exclude list specified in the UI
-         Common.Enums.IFCEntityType elementClassTypeEnum = Common.Enums.IFCEntityType.IfcAnnotation;
+         IFCEntityType elementClassTypeEnum = IFCEntityType.IfcAnnotation;
          if (ExporterCacheManager.ExportOptionsCache.IsElementInExcludeList(elementClassTypeEnum))
             return;
 
@@ -255,7 +247,8 @@ namespace Revit.IFC.Export.Exporter
          IFCAnyHandle relativePlacement = ExporterUtil.CreateAxis(file, origin, zDir, xDir);
          GeometryUtil.SetRelativePlacement(localPlacement, relativePlacement);
 
-         IFCAnyHandle annotation = IFCInstanceExporter.CreateAnnotation(exporterIFC, curveElement, GUIDUtil.CreateGUID(),
+         string guid = GUIDUtil.CreateGUID(curveElement);
+         IFCAnyHandle annotation = IFCInstanceExporter.CreateAnnotation(exporterIFC, curveElement, guid,
             ExporterCacheManager.OwnerHistoryHandle, localPlacement, prodShapeHnd);
 
          return annotation;

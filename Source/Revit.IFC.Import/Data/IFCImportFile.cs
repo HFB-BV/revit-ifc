@@ -137,11 +137,8 @@ namespace Revit.IFC.Import.Data
          }
          finally
          {
-            if (ifcFile != null)
-            {
-               ifcFile.Close();
-               ifcFile = null;
-            }
+            ifcFile?.Close();
+            ifcFile = null;
          }
       }
 
@@ -158,7 +155,7 @@ namespace Revit.IFC.Import.Data
       /// <summary>
       /// A map of all of the already created IFC entities.  This is necessary to prevent duplication and redundant work.
       /// </summary>
-      public IDictionary<int, IFCEntity> EntityMap { get; } = new Dictionary<int, IFCEntity>();
+      public IDictionary<long, IFCEntity> EntityMap { get; } = new Dictionary<long, IFCEntity>();
 
       /// <summary>
       /// A map of all of the already created transforms for IFCLocation.  This is necessary to prevent duplication and redundant work.
@@ -452,6 +449,7 @@ namespace Revit.IFC.Import.Data
                success = ProcessReference();
                break;
          }
+
          if (success)
             StoreIFCCreatorInfo(IFCFile, doc.ProjectInformation);
          else
