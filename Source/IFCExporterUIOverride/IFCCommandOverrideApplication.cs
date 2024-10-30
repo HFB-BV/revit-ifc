@@ -402,7 +402,7 @@ namespace BIM.IFC.Export.UI
          return linkFileName;
       }
 
-      public static IFCExportFailuresContainer PerformLinkedExports(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
+      public static IList<IFCLinkExportSummary> PerformLinkedExports(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
       {
          // get the extension
          int index = fileName.LastIndexOf('.');
@@ -465,16 +465,18 @@ namespace BIM.IFC.Export.UI
 
          // get the link instances
          // We will keep track of the instances we can't export.
-         IFCExportFailuresContainer errContainer = new IFCExportFailuresContainer();
+         IList<IFCLinkExportSummary> exportSummaries = new List<IFCLinkExportSummary>();
 
          foreach (KeyValuePair<string, List<RevitLinkInstance>> linkPathNames in rvtLinkNamesToInstancesDict)
          {
             string linkPathName = linkPathNames.Key;
+            IFCLinkExportSummary exportSummary = new IFCLinkExportSummary(linkPathName);
 
             // get the link instances
             List<RevitLinkInstance> currRvtLinkInstances = rvtLinkNamesToInstancesDict[linkPathName];
             IList<string> linkFileNames = new List<string>();
             IList<Tuple<ElementId, string>> serTransforms = new List<Tuple<ElementId, string>>();
+            IList<ElementId> linkInstanceIds = new List<ElementId>();
 
             Document linkDocument = null;
             double lengthScaleFactorLink = 1.0;
@@ -497,7 +499,7 @@ namespace BIM.IFC.Export.UI
 
                if (linkDocument == null)
                {
-                  errContainer.cantFindDoc.Add(currRvtLinkInstance.Id);
+                  exportSummary.cantFindDoc.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
@@ -507,19 +509,19 @@ namespace BIM.IFC.Export.UI
                // We can't handle non-conformal, scaled, or mirrored transforms.
                if (!tr.IsConformal)
                {
-                  errContainer.nonConformalInst.Add(currRvtLinkInstance.Id);
+                  exportSummary.nonConformalInst.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
                if (tr.HasReflection)
                {
-                  errContainer.instHasReflection.Add(currRvtLinkInstance.Id);
+                  exportSummary.instHasReflection.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
                if (!MathUtil.IsAlmostEqual(tr.Determinant, 1.0))
                {
-                  errContainer.scaledInst.Add(currRvtLinkInstance.Id);
+                  exportSummary.scaledInst.Add(currRvtLinkInstance.Id);
                   continue;
                }
 
@@ -572,7 +574,12 @@ namespace BIM.IFC.Export.UI
 
                // serialize transform
                serTransforms.Add(Tuple.Create(currRvtLinkInstance.Id, SerializeTransform(tr)));
+
+               // Add the element ID - used for reporting
+               linkInstanceIds.Add(currRvtLinkInstance.Id);
             }
+            exportSummary.linkFileNames = linkFileNames;
+            exportSummary.exportedInstanceIds = linkInstanceIds;
 
             // IFC export requires an open transaction, although no changes should be made
             if (linkDocument != null)
@@ -587,6 +594,7 @@ namespace BIM.IFC.Export.UI
                try
                {
                   int numLinkInstancesToExport = linkFileNames.Count;
+                  exportSummary.NumExportedLinkInstances = numLinkInstancesToExport;
                   exportOptions.AddOption("NumberOfExportedLinkInstances", numLinkInstancesToExport.ToString());
 
                   for (int ind = 0; ind < numLinkInstancesToExport; ind++)
@@ -617,13 +625,14 @@ namespace BIM.IFC.Export.UI
                // rollback the transaction
                transaction.RollBack();
             }
+            exportSummaries.Add(exportSummary);
          }
-         return errContainer;
+         return exportSummaries;
       }
 
-      private void ShowExportErrors(IFCExportFailuresContainer errContainer)
+      private void ShowExportErrors(IFCLinkExportSummary summary)
       {
-         int numBadInstances = errContainer.GetNumBadInstances();
+         int numBadInstances = summary.GetNumBadInstances();
          if (numBadInstances > 0)
          {
             using (TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExport))
@@ -633,12 +642,12 @@ namespace BIM.IFC.Export.UI
                taskDialog.TitleAutoPrefix = false;
 
                string expandedContent = "";
-               AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportErrorPath, errContainer.pathDoesntExist);
-               AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantCreateDoc, errContainer.noTempDoc);
-               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantFindDoc, errContainer.cantFindDoc);
-               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportNonConformal, errContainer.nonConformalInst);
-               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportScaled, errContainer.scaledInst);
-               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportHasReflection, errContainer.instHasReflection);
+               AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportErrorPath, summary.pathDoesntExist);
+               AddExpandedStringContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantCreateDoc, summary.noTempDoc);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportCantFindDoc, summary.cantFindDoc);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportNonConformal, summary.nonConformalInst);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportScaled, summary.scaledInst);
+               AddExpandedElementIdContent(ref expandedContent, Properties.Resources.LinkInstanceExportHasReflection, summary.instHasReflection);
 
                taskDialog.ExpandedContent = expandedContent;
                TaskDialogResult result = taskDialog.Show();
@@ -648,16 +657,19 @@ namespace BIM.IFC.Export.UI
 
       public void ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
       {
-         IFCExportFailuresContainer errContainer = PerformLinkedExports(document, "", fileName, linksGUIDsCache, exportOptions);
-         if (errContainer != null)
+         IList<IFCLinkExportSummary> summaries = PerformLinkedExports(document, "", fileName, linksGUIDsCache, exportOptions);
+         foreach (IFCLinkExportSummary summary in summaries)
          {
-            // Show user errors, if any.
-            ShowExportErrors(errContainer);
+            if (summary != null)
+            {
+               // Show user errors, if any.
+               ShowExportErrors(summary);
+            }
          }
       }
 
       // Static version without UI feedback that can be called by scripts
-      public static IFCExportFailuresContainer ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
+      public static IList<IFCLinkExportSummary> ExportLinkedDocuments(Autodesk.Revit.DB.Document document, string folderpath, string fileName, Dictionary<ElementId, string> linksGUIDsCache, IFCExportOptions exportOptions)
       {
          return PerformLinkedExports(document, folderpath, fileName, linksGUIDsCache, exportOptions);
       }
