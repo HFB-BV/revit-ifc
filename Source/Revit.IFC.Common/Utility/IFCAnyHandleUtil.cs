@@ -27,6 +27,66 @@ using Revit.IFC.Common.Enums;
 
 namespace Revit.IFC.Common.Utility
 {
+   public static class ListExtensions
+   {
+      /// <summary>
+      /// Add an IFCAnyHandle to a list if the handle is valid.
+      /// </summary>
+      /// <typeparam name="IFCAnyHandle"></typeparam>
+      /// <param name="myList">The list.</param>
+      /// <param name="hnd">The handle to conditionally add.</param>
+      /// <returns>True if an item was added, false if not.</returns>
+      public static bool AddIfNotNull<T>(this IList<T> myList, T hnd) where T : IFCAnyHandle
+      {
+         if (IFCAnyHandleUtil.IsNullOrHasNoValue(hnd))
+            return false;
+
+         myList.Add(hnd);
+         return true;
+      }
+   }
+
+   /// <summary>
+   /// Class containing convenience function for IDictionary of IFCAnyHandle.
+   /// </summary>
+   public static class DictionaryExtensionsClass
+   {
+      public static bool AddIfNotNullAndNewKey<T>(this IDictionary<string, T> myDictionary, 
+         string key, T hnd) where T : IFCAnyHandle
+      {
+         if (IFCAnyHandleUtil.IsNullOrHasNoValue(hnd))
+            return false;
+         
+         if (myDictionary.ContainsKey(key))
+            return false;
+
+         myDictionary[key] = hnd;
+         return true;
+      }
+   }
+
+   /// <summary>
+   /// Class containing convenience function for ISet of IFCAnyHandle.
+   /// </summary>
+   public static class SetExtensions
+   {
+      /// <summary>
+      /// Add an IFCAnyHandle to a set if the handle is valid.
+      /// </summary>
+      /// <typeparam name="IFCAnyHandle"></typeparam>
+      /// <param name="mySet">The set.</param>
+      /// <param name="hnd">The handle to conditionally add.</param>
+      /// <returns>True if an item was added, false if not.</returns>
+      public static bool AddIfNotNull<T>(this ISet<T> mySet, T hnd) where T : IFCAnyHandle
+      {
+         if (IFCAnyHandleUtil.IsNullOrHasNoValue(hnd))
+            return false;
+
+         mySet.Add(hnd);
+         return true;
+      }
+   }
+
    public class IFCLimits
    {
       /// <summary>
@@ -1936,7 +1996,7 @@ namespace Revit.IFC.Common.Utility
       /// <returns>True if it is null or has no value, false otherwise.</returns>
       public static bool IsNullOrHasNoValue(IFCAnyHandle handle)
       {
-         return handle == null || !handle.HasValue;
+         return !(handle?.HasValue ?? false);
       }
 
       /// <summary>
@@ -1951,6 +2011,25 @@ namespace Revit.IFC.Common.Utility
             return false;
 
          return handle.IsTypeOf(GetIFCEntityTypeName(type));
+      }
+
+      /// <summary>
+      /// Checks if the handle is an entity of exactly one of the given type (not including its sub-types).
+      /// </summary>
+      /// <param name="handle">The handle to be checked.</param>
+      /// <param name="types">The entity types to be checked against.</param>
+      /// <returns>True if the handle entity is an entity one of the given type (not including its sub-types).</returns>
+      public static bool IsTypeOneOf(IFCAnyHandle handle, ISet<IFCEntityType> types)
+      {
+         if (IsNullOrHasNoValue(handle) || types == null)
+            return false;
+
+         foreach (var entityType in types)
+         {
+            if (handle.IsTypeOf(GetIFCEntityTypeName(entityType)))
+               return true;
+         }
+         return false;
       }
 
       /// <summary>

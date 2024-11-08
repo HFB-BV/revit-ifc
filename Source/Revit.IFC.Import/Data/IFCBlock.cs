@@ -52,10 +52,8 @@ namespace Revit.IFC.Import.Data
       }
 
       protected override IList<GeometryObject> CreateGeometryInternal(
-         IFCImportShapeEditScope shapeEditScope, Transform lcs, Transform scaledLcs, string guid)
+         IFCImportShapeEditScope shapeEditScope, Transform scaledLcs, string guid)
       {
-         // Note that lcs is unused.
-
          if (XLength < MathUtil.Eps() || YLength < MathUtil.Eps() || ZLength < MathUtil.Eps())
             return null;
 
@@ -83,10 +81,10 @@ namespace Revit.IFC.Import.Data
          {
             block = GeometryCreationUtilities.CreateExtrusionGeometry(loops, scaledExtrusionDirection, ZLength, solidOptions);
          }
-         catch (Exception ex)
+         catch (Exception)
          {
             if (shapeEditScope.MustCreateSolid())
-               throw ex;
+               throw;
 
             Importer.TheLog.LogError(Id, "Block has an invalid definition for a solid; reverting to mesh.", false);
 
@@ -108,14 +106,14 @@ namespace Revit.IFC.Import.Data
       /// Create geometry for a particular representation item.
       /// </summary>
       /// <param name="shapeEditScope">The geometry creation scope.</param>
-      /// <param name="lcs">Local coordinate system for the geometry, without scale.</param>
       /// <param name="scaledLcs">Local coordinate system for the geometry, including scale, potentially non-uniform.</param>
       /// <param name="guid">The guid of an element for which represntation is being created.</param>
-      protected override void CreateShapeInternal(IFCImportShapeEditScope shapeEditScope, Transform lcs, Transform scaledLcs, string guid)
+      protected override void CreateShapeInternal(IFCImportShapeEditScope shapeEditScope, 
+         Transform scaledLcs, string guid)
       {
-         base.CreateShapeInternal(shapeEditScope, lcs, scaledLcs, guid);
+         base.CreateShapeInternal(shapeEditScope, scaledLcs, guid);
 
-         IList<GeometryObject> blockGeometries = CreateGeometryInternal(shapeEditScope, lcs, scaledLcs, guid);
+         IList<GeometryObject> blockGeometries = CreateGeometryInternal(shapeEditScope, scaledLcs, guid);
          if (blockGeometries != null)
          {
             foreach (GeometryObject blockGeometry in blockGeometries)

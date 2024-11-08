@@ -448,8 +448,6 @@ namespace BIM.IFC.Export.UI
             string selectedConfigName = editorWindow.GetSelectedConfigurationName();
 
             UpdateCurrentSelectedSetupCombo(selectedConfigName);
-
-            updateFileName();
          }
 
          // The SelectionChanged event will be activated again after the Modify Config Window is closed
@@ -469,7 +467,10 @@ namespace BIM.IFC.Export.UI
          // Show Path is invalid message if the path is blank or invalid.
          if (!string.IsNullOrWhiteSpace(filePath) && !Directory.Exists(filePath))
          {
-            TaskDialog.Show("Error", Properties.Resources.ValidPathExists);
+            TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExportProcessGenericError);
+            taskDialog.MainInstruction = Properties.Resources.ValidPathExists;
+            taskDialog.TitleAutoPrefix = false;
+            taskDialog.Show();
          }
          else
          {
@@ -486,24 +487,50 @@ namespace BIM.IFC.Export.UI
             // Prompt for overwriting the file if it is already present in the directory.
             if (File.Exists(textBoxSetupFileName.Text))
             {
-               TaskDialogResult msgBoxResult = TaskDialog.Show(Properties.Resources.IFCExport, String.Format(Properties.Resources.FileExists, textBoxSetupFileName.Text), TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No);
-               if (msgBoxResult == TaskDialogResult.No)
+               TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExport);
+               taskDialog.MainInstruction = String.Format(Properties.Resources.FileExists, textBoxSetupFileName.Text);
+               taskDialog.CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No;
+               taskDialog.TitleAutoPrefix = false;
+
+               TaskDialogResult taskDialogResult = taskDialog.Show();
+               if (taskDialogResult == TaskDialogResult.No)
                {
                   return;
                }
             }
             if(Win32API.RtlIsDosDeviceName_U(textBoxSetupFileName.Text) != 0)
             {
-               TaskDialog.Show(Properties.Resources.IFCExport, String.Format(Properties.Resources.ReservedDeviceName, textBoxSetupFileName.Text));
+               TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExport);
+               taskDialog.MainInstruction = String.Format(Properties.Resources.ReservedDeviceName, textBoxSetupFileName.Text);
+               taskDialog.TitleAutoPrefix = false;
+               taskDialog.Show();
                return;
             }
 
+            TheDocument.Application.WriteJournalComment(@"Jrn.Data ""File Name"", ""IDOK"", " + @"""" + textBoxSetupFileName.Text + @"""", true);
+
             IFCExportConfiguration selectedConfig = GetSelectedConfiguration();
+            if (OptionsUtil.ExportAs4DesignTransferView(selectedConfig.IFCVersion))
+            {
+               TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExportGenericWarning);
+               taskDialog.MainInstruction = String.Format(Properties.Resources.IFC4DTVWarning, selectedConfig.FileVersionDescription);
+               taskDialog.CommonButtons = TaskDialogCommonButtons.Ok | TaskDialogCommonButtons.Cancel;
+               taskDialog.DefaultButton = TaskDialogResult.Ok;
+               taskDialog.TitleAutoPrefix = false;
+
+               TaskDialogResult taskDialogResult = taskDialog.Show();
+               if (taskDialogResult == TaskDialogResult.Cancel)
+               {
+                  return;
+               }
+            }
+
             if (m_EditConfigVisited && LastSelectedConfig.ContainsKey(selectedConfig.Name))
                selectedConfig = LastSelectedConfig[selectedConfig.Name];
 
             // This check will be done only for IFC4 and above as this only affects IfcMapConversion use that starts in IFC4 onward
-            if (!OptionsUtil.ExportAsOlderThanIFC4(selectedConfig.IFCVersion))
+            if (!OptionsUtil.ExportAsOlderThanIFC4(selectedConfig.IFCVersion) &&
+               !string.IsNullOrWhiteSpace(selectedConfig.GeoRefEPSGCode))
             {
                // Check whether the resulting offset (to wcs) will be too large due to geo-reference information, raise warning
                BasePoint surveyPoint = BasePoint.GetSurveyPoint(TheDocument);
@@ -533,9 +560,13 @@ namespace BIM.IFC.Export.UI
 
                   if (!XYZ.IsWithinLengthLimits(deltaOffset))
                   {
-                     TaskDialogResult msgBoxResult = TaskDialog.Show(Properties.Resources.IFCExport, Properties.Resources.OffsetDistanceTooLarge,
-                        TaskDialogCommonButtons.Ok | TaskDialogCommonButtons.Cancel);
-                     if (msgBoxResult == TaskDialogResult.Cancel)
+                     TaskDialog taskDialog = new TaskDialog(Properties.Resources.IFCExport);
+                     taskDialog.MainInstruction = Properties.Resources.OffsetDistanceTooLarge;
+                     taskDialog.CommonButtons = TaskDialogCommonButtons.Ok | TaskDialogCommonButtons.Cancel;
+                     taskDialog.TitleAutoPrefix = false;
+
+                     TaskDialogResult taskDialogResult = taskDialog.Show();
+                     if (taskDialogResult == TaskDialogResult.Cancel)
                      {
                         return;
                      }
@@ -546,28 +577,35 @@ namespace BIM.IFC.Export.UI
             Result = IFCExportResult.ExportAndSaveSettings;
             Close();
 
+            IFCFileHeaderItem fileHeaderItem;
+
+            // For backward compatibility in case the document contains saved FileHeaderItem from the previous version
+            IFCFileHeader ifcFileHeader = new IFCFileHeader();
+            if (!ifcFileHeader.GetSavedFileHeader(IFCCommandOverrideApplication.TheDocument, out fileHeaderItem))
+            {
+               // Do minimum initialization if the header item is not initialized
+               fileHeaderItem = new IFCFileHeaderItem(IFCCommandOverrideApplication.TheDocument);
+            }
+
+            // Set the selected Coordinate Base into IFC File Header Description
+            string coordBase = "CoordinateBase: " + new IFCSitePlacementAttributes(selectedConfig.SitePlacement);
+
+            // Set the selected Project Site into IFC File Header Description
+            if (!string.IsNullOrEmpty(selectedConfig.SelectedSite))
+            {
+               coordBase = string.Join(", ", coordBase, "ProjectSite: " + selectedConfig.SelectedSite);
+            }
+
+            fileHeaderItem.FileDescriptions.Add("CoordinateReference [" + coordBase + "]");
+
             // Set IFC File header with the selected exchange requirement
             if (selectedConfig.ExchangeRequirement != KnownERNames.NotDefined)
             {
-               IFCFileHeader ifcFileHeader = new IFCFileHeader();
-               IFCFileHeaderItem fileHeaderItem;
-               bool newFileHeader = false;
-
-               if (!ifcFileHeader.GetSavedFileHeader(IFCCommandOverrideApplication.TheDocument, out fileHeaderItem))
-               {
-                  // Do minimum initialization if the header item is not initialized
-                  fileHeaderItem = new IFCFileHeaderItem(IFCCommandOverrideApplication.TheDocument);
-                  newFileHeader = true;
-               }
-
-               string erName = selectedConfig.ExchangeRequirement.ToString();
-               string newExchangeRequirement = "ExchangeRequirement [" + erName + "]";
-               if (newFileHeader || fileHeaderItem.FileDescription == null || !fileHeaderItem.FileDescription.Equals(newExchangeRequirement))
-               {
-                  fileHeaderItem.FileDescription = newExchangeRequirement;
-                  ifcFileHeader.UpdateFileHeader(IFCCommandOverrideApplication.TheDocument, fileHeaderItem);
-               }
+               string newExchangeRequirement = "ExchangeRequirement [" + selectedConfig.ExchangeRequirement.ToString() + "]";
+               fileHeaderItem.AddOrReplaceDescriptionItem(newExchangeRequirement);
             }
+
+            OptionsUtil.FileHeaderIFC = fileHeaderItem;
 
             LastSelectedConfig[selectedConfig.Name] = selectedConfig;
             TheDocument.Application.WriteJournalComment("Dialog Closed", true);

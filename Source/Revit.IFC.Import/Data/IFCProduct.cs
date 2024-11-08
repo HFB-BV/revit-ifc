@@ -38,7 +38,7 @@ namespace Revit.IFC.Import.Data
       public IFCVoidInfo(IFCSolidInfo solid)
          : base(solid.Id, solid.GeometryObject)
       {
-         this.RepresentationType = solid.RepresentationType;
+         this.RepresentationIdentifier = solid.RepresentationIdentifier;
       }
    }
 
@@ -186,7 +186,7 @@ namespace Revit.IFC.Import.Data
       }
 
       /// <summary>
-      /// Private function to determine whether an IFCProduct directly contains vaoid geometry.
+      /// Private function to determine whether an IFCProduct directly contains valid geometry.
       /// </summary>
       /// <returns>True if the IFCProduct directly contains valid geometry.</returns>
       private bool HasValidTopLevelGeometry()
@@ -195,7 +195,7 @@ namespace Revit.IFC.Import.Data
       }
 
       /// <summary>
-      /// Private function to determine whether an IFCProduct contins geometry in a sub-element.
+      /// Private function to determine whether an IFCProduct contains geometry in a sub-element.
       /// </summary>
       /// <param name="visitedEntities">A list of already visited entities, to avoid infinite recursion.</param>
       /// <returns>True if the IFCProduct directly or indirectly contains geometry.</returns>
@@ -229,7 +229,7 @@ namespace Revit.IFC.Import.Data
       protected override bool CutSolidByVoids(IFCSolidInfo solidInfo)
       {
          // We only cut "Body" representation items.
-         if (solidInfo.RepresentationType != IFCRepresentationIdentifier.Body)
+         if (solidInfo.RepresentationIdentifier != IFCRepresentationIdentifier.Body)
             return true;
 
          IList<IFCVoidInfo> voidsToUse = null;
@@ -268,13 +268,16 @@ namespace Revit.IFC.Import.Data
                continue;
             }
 
-            var voidTransform = voidInfo.TotalTransform;
+            Transform voidTransform = voidInfo.TotalTransform;
 
-            if (voidTransform != null && voidTransform.IsIdentity == false)
+            if (voidTransform != null)
             {
                // Transform the void into the space of the solid.
-               var t = ObjectLocation.TotalTransform.Inverse.Multiply(voidTransform);
-               voidObject = SolidUtils.CreateTransformed(voidObject, t);
+               Transform voidToSolidTrf = ObjectLocation.TotalTransform.Inverse.Multiply(voidTransform);
+               if (voidToSolidTrf.IsIdentity == false)
+               {
+                  voidObject = SolidUtils.CreateTransformed(voidObject, voidToSolidTrf);
+               }
             }
 
             solidInfo.GeometryObject = IFCGeometryUtil.ExecuteSafeBooleanOperation(solidInfo.Id, voidInfo.Id,
@@ -354,7 +357,7 @@ namespace Revit.IFC.Import.Data
                // Lower down this method we then pass lcs to the consumer element, so that it can apply
                // the transform as required.
                Transform transformToUse = Importer.TheProcessor.ApplyTransforms ? lcs : Transform.Identity;
-               ProductRepresentation.CreateProductRepresentation(shapeEditScope, transformToUse, transformToUse, myId);
+               ProductRepresentation.CreateProductRepresentation(shapeEditScope, transformToUse, myId);
 
                int numSolids = Solids.Count;
                // Attempt to cut each solid with each void.
@@ -386,20 +389,19 @@ namespace Revit.IFC.Import.Data
                      {
                         // We need to check if the solid created is good enough for DirectShape.  If not, warn and use a fallback Mesh.
                         GeometryObject currObject = geometryObject.GeometryObject;
-                        if (currObject is Solid)
-                        {
-                           Solid solid = currObject as Solid;
-                           if (!shape.IsValidGeometry(solid))
+                        if (currObject != null)
                            {
-                              Importer.TheLog.LogWarning(Id, "Couldn't create valid solid, reverting to mesh.", false);
-                              directShapeGeometries.AddRange(IFCGeometryUtil.CreateMeshesFromSolid(solid));
-                              currObject = null;
+                              IList<GeometryObject> adjustedObjects = IFCGeometryUtil.AdjustGeometryObjectsIfNeeded(currObject, shape, Id);
+                              if (adjustedObjects != null)
+                              {
+                                 directShapeGeometries.AddRange(adjustedObjects);
+                              }
+                              else
+                              {
+                                 directShapeGeometries.Add(currObject);
+                              }
                            }
                         }
-
-                        if (currObject != null)
-                           directShapeGeometries.Add(currObject);
-                     }
 
                      // We will use the first IfcTypeObject id, if it exists.  In general, there should be 0 or 1.
                      IFCTypeObject typeObjectToUse = null;
@@ -499,6 +501,9 @@ namespace Revit.IFC.Import.Data
 
             if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcProduct, IFCEntityType.IfcDistributionPort))
                return IFCDistributionPort.ProcessIFCDistributionPort(ifcProduct);
+
+            if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcProduct, IFCEntityType.IfcAnnotation))
+               return IFCAnnotation.ProcessIFCAnnotation(ifcProduct);
          }
          catch (Exception ex)
          {
