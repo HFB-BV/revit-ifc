@@ -105,10 +105,10 @@
       <DependentUpon>IFCClassificationUI.xaml</DependentUpon>
     </Compile>
     <Compile Include="IFCExchangeRequirements.cs" />
-    <Compile Include="IFCExportFailuresContainer.cs" />
     <Compile Include="IFCFileHeaderInformationUI.xaml.cs">
       <DependentUpon>IFCFileHeaderInformationUI.xaml</DependentUpon>
     </Compile>
+    <Compile Include="IFCLinkExportSummary.cs" />
     <Compile Include="IFCPhaseAttributes.cs" />
     <Compile Include="IFCPropertySets.cs" />
     <Compile Include="IFCRenameExportSetup.xaml.cs">
