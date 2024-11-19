@@ -836,10 +836,22 @@ namespace BIM.IFC.Export.UI
 
          // convert bool to enum.
          if (value is bool boolValue)
+         {
             propertyInfo.SetValue(destination, boolValue ? LinkedFileExportAs.ExportAsSeparate : LinkedFileExportAs.DontExport);
+         }
          // presented expected type.
          else if (value is LinkedFileExportAs exportLinkedFiles)
+         {
             propertyInfo.SetValue(destination, exportLinkedFiles);
+         }
+         // Convert integer to enum if possible
+         else if (value is int intValue)
+         {
+            if (Enum.IsDefined(typeof(LinkedFileExportAs), intValue))
+            {
+               propertyInfo.SetValue(destination, (LinkedFileExportAs)intValue);
+            }
+         }
          // else don't set value to leave the default value.
       }
    }
