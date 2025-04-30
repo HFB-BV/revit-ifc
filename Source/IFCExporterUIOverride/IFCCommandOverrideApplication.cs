@@ -420,7 +420,7 @@ namespace BIM.IFC.Export.UI
          }
       }
 
-      private string FileNameListToString(IList<string> fileNames)
+      private static string FileNameListToString(IList<string> fileNames)
       {
          string fileNameListString = "";
          foreach (string fileName in fileNames)
@@ -432,7 +432,7 @@ namespace BIM.IFC.Export.UI
          return fileNameListString;
       }
 
-      private string ElementIdListToString(IList<ElementId> elementIds)
+      private static string ElementIdListToString(IList<ElementId> elementIds)
       {
          string elementString = "";
          foreach (ElementId elementId in elementIds)
@@ -445,7 +445,7 @@ namespace BIM.IFC.Export.UI
       }
 
       // This modifies an existing string to display an expanded error message to the user.
-      private void AddExpandedStringContent(ref string messageString, string formatString, IList<string> items)
+      private static void AddExpandedStringContent(ref string messageString, string formatString, IList<string> items)
       {
          if (messageString != "")
             messageString += "\n";
@@ -455,7 +455,7 @@ namespace BIM.IFC.Export.UI
       }
 
       // This modifies an existing string to display an expanded error message to the user.
-      private void AddExpandedElementIdContent(ref string messageString, string formatString, IList<ElementId> items)
+      private static void AddExpandedElementIdContent(ref string messageString, string formatString, IList<ElementId> items)
       {
          if (messageString != "")
             messageString += "\n";
@@ -464,7 +464,7 @@ namespace BIM.IFC.Export.UI
             messageString += string.Format(formatString, ElementIdListToString(items));
       }
 
-      private string GetLinkFileName(Document linkDocument, string linkPathName)
+      private static string GetLinkFileName(Document linkDocument, string linkPathName)
       {
          int index = linkPathName.LastIndexOf("\\");
          if (index <= 0)
@@ -478,7 +478,7 @@ namespace BIM.IFC.Export.UI
          return linkFileName;
       }
 
-      private (IDictionary<RevitLinkInstance, Transform>, string, int) GetLinkedInstanceInfo(
+      public static (IDictionary<RevitLinkInstance, Transform>, string, int) GetLinkedInstanceInfo(
          IList<RevitLinkInstance> linkInstances)
       {
          IDictionary<RevitLinkInstance, Transform> linkedInstanceTransforms =
@@ -563,7 +563,7 @@ namespace BIM.IFC.Export.UI
       /// </summary>
       /// <param name="element">The element.</param>
       /// <returns>True if the element is visible, false otherwise.</returns>
-      public bool IsLinkVisible(Element element, View filterView)
+      public static bool IsLinkVisible(Element element, View filterView)
       {
          if (filterView == null)
             return true;
@@ -577,7 +577,7 @@ namespace BIM.IFC.Export.UI
          return filterView.IsElementVisibleInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate, element.Id);
       }
 
-      public void ExportLinkedDocuments(Document document, string fileName,
+      public static IList<IFCLinkExportSummary> PerformLinkedExports(Document document, string fileName,
          IDictionary<ElementId, string> linkGUIDsCache,
          IDictionary<RevitLinkInstance, Transform> idToTransform,
          IFCExportOptions exportOptions, ElementId originalFilterViewId)
@@ -585,7 +585,7 @@ namespace BIM.IFC.Export.UI
          // get the extension
          int index = fileName.LastIndexOf('.');
          if (index <= 0)
-            return;
+            return null;
          string sExtension = fileName.Substring(index);
          fileName = fileName.Substring(0, index);
 
@@ -633,14 +633,18 @@ namespace BIM.IFC.Export.UI
          {
          }
 
+         IList<IFCLinkExportSummary> exportSummaries = new List<IFCLinkExportSummary>();
+
          foreach (KeyValuePair<string, List<RevitLinkInstance>> linkPathNames in rvtLinkNamesToInstancesDict)
          {
             string linkPathName = linkPathNames.Key;
+            IFCLinkExportSummary exportSummary = new IFCLinkExportSummary(linkPathName);
 
             // get the link instances
             List<RevitLinkInstance> currRvtLinkInstances = rvtLinkNamesToInstancesDict[linkPathName];
             IList<string> linkFileNames = new List<string>();
             IList<Tuple<ElementId, string>> serTransforms = new List<Tuple<ElementId, string>>();
+            IList<ElementId> linkInstanceIds = new List<ElementId>();
 
             Document linkDocument = null;
 
@@ -701,7 +705,12 @@ namespace BIM.IFC.Export.UI
 
                // serialize transform
                serTransforms.Add(Tuple.Create(instanceId, SerializeTransform(idToTransform[currRvtLinkInstance])));
+
+               // Add the element ID - used for reporting
+               linkInstanceIds.Add(currRvtLinkInstance.Id);
             }
+            exportSummary.linkFileNames = linkFileNames;
+            exportSummary.exportedInstanceIds = linkInstanceIds;
 
             if (linkDocument != null)
             {
@@ -709,6 +718,7 @@ namespace BIM.IFC.Export.UI
                try
                {
                   int numLinkInstancesToExport = linkFileNames.Count;
+                  exportSummary.NumExportedLinkInstances = numLinkInstancesToExport;
                   exportOptions.AddOption("NumberOfExportedLinkInstances", numLinkInstancesToExport.ToString());
 
                   for (int ind = 0; ind < numLinkInstancesToExport; ind++)
@@ -743,7 +753,26 @@ namespace BIM.IFC.Export.UI
                {
                }
             }
+            exportSummaries.Add(exportSummary);
          }
+         return exportSummaries;
+      }
+
+      public void ExportLinkedDocuments(Document document, string fileName,
+                                        IDictionary<ElementId, string> linkGUIDsCache,
+                                        IDictionary<RevitLinkInstance, Transform> idToTransform,
+                                        IFCExportOptions exportOptions, ElementId originalFilterViewId)
+      {
+         PerformLinkedExports(document, fileName, linkGUIDsCache, idToTransform, exportOptions, originalFilterViewId);
+      }
+
+      // Static version that can be called by scripts. To make the signature unique, the filepath is specified differently.
+      public static IList<IFCLinkExportSummary> ExportLinkedDocuments(Document document, string folderpath, string fileName,
+                                                                      IDictionary<ElementId, string> linkGUIDsCache,
+                                                                      IDictionary<RevitLinkInstance, Transform> idToTransform,
+                                                                      IFCExportOptions exportOptions, ElementId originalFilterViewId)
+      {
+         return PerformLinkedExports(document, fileName, linkGUIDsCache, idToTransform, exportOptions, originalFilterViewId);
       }
 
       public static string SerializeXYZ(XYZ value)
