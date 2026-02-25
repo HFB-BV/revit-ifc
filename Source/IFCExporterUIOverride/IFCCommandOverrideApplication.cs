@@ -261,6 +261,7 @@ namespace BIM.IFC.Export.UI
 
                   // Call this before the Export IFC transaction starts, as it has its own transaction.
                   IFCClassificationMgr.DeleteObsoleteSchemas(document);
+                  IFCClassificationMgr.UpdateClassification(document, selectedConfig.ClassificationSettings);
 
                   Transaction transaction = new Transaction(document, "Export IFC");
                   transaction.Start();
@@ -558,12 +559,7 @@ namespace BIM.IFC.Export.UI
          return (linkedInstanceTransforms, expandedContent, numBadInstances);
       }
 
-      /// <summary>
-      /// Checks if element is visible for certain view.
-      /// </summary>
-      /// <param name="element">The element.</param>
-      /// <returns>True if the element is visible, false otherwise.</returns>
-      public static bool IsLinkVisible(Element element, View filterView)
+      private static bool IsLinkVisibleCore(Element element, View filterView)
       {
          if (filterView == null)
             return true;
@@ -577,7 +573,25 @@ namespace BIM.IFC.Export.UI
          return filterView.IsElementVisibleInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate, element.Id);
       }
 
-      public static IList<IFCLinkExportSummary> PerformLinkedExports(Document document, string fileName,
+      /// <summary>
+      /// Checks if element is visible for certain view.
+      /// </summary>
+      /// <param name="element">The element.</param>
+      /// <returns>True if the element is visible, false otherwise.</returns>
+      public bool IsLinkVisible(Element element, View filterView)
+      {
+         return IsLinkVisibleCore(element, filterView);
+      }
+
+      // Static variant of IsLinkVisible; we won't change the original IsLinkVisible to static
+      // because it is marked as public in the original repo and we don't know who else may depend
+      // on it.
+      public static bool IsLinkVisibleStatic(Element element, View filterView)
+      {
+         return IsLinkVisibleCore(element, filterView);
+      }
+
+      private static IList<IFCLinkExportSummary> PerformLinkedExports(Document document, string fileName,
          IDictionary<ElementId, string> linkGUIDsCache,
          IDictionary<RevitLinkInstance, Transform> idToTransform,
          IFCExportOptions exportOptions, ElementId originalFilterViewId)
@@ -589,6 +603,9 @@ namespace BIM.IFC.Export.UI
          string sExtension = fileName.Substring(index);
          fileName = fileName.Substring(0, index);
 
+         // Check view overrides for linked instance 
+         bool existsViewOverrides = false;
+
          // get all the revit link instances
          IDictionary<string, int> rvtLinkNamesDict = new Dictionary<string, int>();
          IDictionary<string, List<RevitLinkInstance>> rvtLinkNamesToInstancesDict =
@@ -599,13 +616,20 @@ namespace BIM.IFC.Export.UI
             View filterView = document.GetElement(originalFilterViewId) as View;
             foreach (RevitLinkInstance rvtLinkInstance in idToTransform.Keys)
             {
-               if (!IsLinkVisible(rvtLinkInstance, filterView))
+               if (!IsLinkVisibleStatic(rvtLinkInstance, filterView))
                   continue;
 
                // get the link document
                Document linkDocument = rvtLinkInstance.GetLinkDocument();
                if (linkDocument == null)
                   continue;
+
+               if (!existsViewOverrides && filterView != null)
+               {
+                  RevitLinkGraphicsSettings settings = filterView.GetLinkOverrides(rvtLinkInstance.Id);
+                  if (settings != null)
+                     existsViewOverrides = true;
+               }
 
                // get the link file path and name
                String linkPathName = "";
@@ -719,34 +743,60 @@ namespace BIM.IFC.Export.UI
                {
                   int numLinkInstancesToExport = linkFileNames.Count;
                   exportSummary.NumExportedLinkInstances = numLinkInstancesToExport;
-                  exportOptions.AddOption("NumberOfExportedLinkInstances", numLinkInstancesToExport.ToString());
-
-                  for (int ind = 0; ind < numLinkInstancesToExport; ind++)
-                  {
-                     string optionName = (ind == 0) ? "ExportLinkId" : "ExportLinkId" + (ind + 1).ToString();
-                     exportOptions.AddOption(optionName, serTransforms[ind].Item1.ToString());
-
-                     optionName = (ind == 0) ? "ExportLinkInstanceTransform" : "ExportLinkInstanceTransform" + (ind + 1).ToString();
-                     exportOptions.AddOption(optionName, serTransforms[ind].Item2);
-
-                     // Don't pass in file name for the first link instance.
-                     if (ind == 0)
-                        continue;
-
-                     optionName = "ExportLinkInstanceFileName" + (ind + 1).ToString();
-                     exportOptions.AddOption(optionName, linkFileNames[ind]);
-                  }
 
                   // Pass in the first value; the rest will  be in the options.
                   string path_ = Path.GetDirectoryName(linkFileNames[0]);
                   string fileName_ = Path.GetFileName(linkFileNames[0]);
 
-                  // Normally, IFC export would need a transaction, even if no permanent
-                  // changes are made.  For linked documents, though, that's handled by the
-                  // export itself.
-                  using (IFCLinkDocumentExportScope scope = new IFCLinkDocumentExportScope(linkDocument))
+                  if (existsViewOverrides)
                   {
-                     linkDocument.Export(path_, fileName_, exportOptions);
+                     // Current linked instance.
+                     exportOptions.AddOption("NumberOfExportedLinkInstances", "1");
+
+                     //If view is overridden export linked instances individually.
+                     for (int ind = 0; ind < numLinkInstancesToExport; ind++)
+                     {
+                        path_ = Path.GetDirectoryName(linkFileNames[ind]);
+                        fileName_ = Path.GetFileName(linkFileNames[ind]);
+
+                        RevitLinkInstance rvtLinkInstance = document.GetElement(serTransforms[ind].Item1) as RevitLinkInstance;
+                        if (rvtLinkInstance == null)
+                           continue;
+
+                        string optionName = "ExportLinkId";
+                        exportOptions.AddOption(optionName, serTransforms[ind].Item1.ToString());
+
+                        optionName = "ExportLinkInstanceTransform";
+                        exportOptions.AddOption(optionName, serTransforms[ind].Item2);
+
+                        optionName = "ExportLinkInstanceFileName";
+                        exportOptions.AddOption(optionName, linkFileNames[ind]);
+
+                        ExportLinkedDocument(linkDocument, path_, fileName_, exportOptions);
+                     }
+                  }
+                  else
+                  {
+                     // Optimized version to avoid extra copies of the IFC file.
+                     exportOptions.AddOption("NumberOfExportedLinkInstances", numLinkInstancesToExport.ToString());
+
+                     for (int ind = 0; ind < numLinkInstancesToExport; ind++)
+                     {
+                        string optionName = (ind == 0) ? "ExportLinkId" : "ExportLinkId" + (ind + 1).ToString();
+                        exportOptions.AddOption(optionName, serTransforms[ind].Item1.ToString());
+
+                        optionName = (ind == 0) ? "ExportLinkInstanceTransform" : "ExportLinkInstanceTransform" + (ind + 1).ToString();
+                        exportOptions.AddOption(optionName, serTransforms[ind].Item2);
+
+                        // Don't pass in file name for the first link instance.
+                        if (ind == 0)
+                           continue;
+
+                        optionName = "ExportLinkInstanceFileName" + (ind + 1).ToString();
+                        exportOptions.AddOption(optionName, linkFileNames[ind]);
+                     }
+
+                     ExportLinkedDocument(linkDocument, path_, fileName_, exportOptions);
                   }
                }
                catch
@@ -773,6 +823,17 @@ namespace BIM.IFC.Export.UI
                                                                       IFCExportOptions exportOptions, ElementId originalFilterViewId)
       {
          return PerformLinkedExports(document, fileName, linkGUIDsCache, idToTransform, exportOptions, originalFilterViewId);
+      }
+
+      private static void ExportLinkedDocument(Document linkDocument, string path, string fileName, IFCExportOptions exportOptions)
+      {
+         // Normally, IFC export would need a transaction, even if no permanent
+         // changes are made.  For linked documents, though, that's handled by the
+         // export itself.
+         using (IFCLinkDocumentExportScope scope = new IFCLinkDocumentExportScope(linkDocument))
+         {
+            linkDocument.Export(path, fileName, exportOptions);
+         }
       }
 
       public static string SerializeXYZ(XYZ value)

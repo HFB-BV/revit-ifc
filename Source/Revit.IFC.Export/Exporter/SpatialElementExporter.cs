@@ -840,6 +840,29 @@ namespace Revit.IFC.Export.Exporter
          }
       }
 
+      static IFCAnyHandle CreateExtrudedShape(ExporterIFC exporterIFC, IFCFile file, Element spatialElement, GeometryElement geomElem,
+         IList<CurveLoop> curveLoops, double scaledRoomHeight, Transform lcs, ElementId catId)
+      {
+         IFCAnyHandle shapeRep = ExtrusionExporter.CreateExtrudedSolidFromCurveLoop(exporterIFC, null, curveLoops, lcs, XYZ.BasisZ, scaledRoomHeight, true, out _);
+         if (IFCAnyHandleUtil.IsNullOrHasNoValue(shapeRep))
+         {
+            return null;
+         }
+
+         // Spaces shouldn't have styled items.
+         HashSet<IFCAnyHandle> bodyItems = new HashSet<IFCAnyHandle>() { shapeRep };
+
+         IFCAnyHandle contextOfItems = ExporterCacheManager.Get3DContextHandle(IFCRepresentationIdentifier.Body);
+         shapeRep = RepresentationUtil.CreateSweptSolidRep(exporterIFC, spatialElement, catId, contextOfItems, bodyItems, null, null);
+         IList<IFCAnyHandle> shapeReps = new List<IFCAnyHandle>() { shapeRep };
+
+         IFCAnyHandle boundingBoxRep = BoundingBoxExporter.ExportBoundingBox(exporterIFC, geomElem, Transform.Identity);
+         if (boundingBoxRep != null)
+            shapeReps.Add(boundingBoxRep);
+
+         return IFCInstanceExporter.CreateProductDefinitionShape(file, null, null, shapeReps);
+      }
+
       /// <summary>
       /// Creates IFC room/space/area item, not include boundaries. 
       /// </summary>
@@ -865,6 +888,7 @@ namespace Revit.IFC.Export.Exporter
 
          Area spatialElementAsArea = spatialElement as Area;
 
+         // Advanced Option Use2DRoomBoundaryForRoomVolumeCreation --> No Geometry Element used.
          if (!ExporterCacheManager.ExportOptionsCache.Use2DRoomBoundaryForRoomVolumeCreation)
          {
             geomElem = (spatialElement as Autodesk.Revit.DB.Architecture.Room)?.ClosedShell;
@@ -879,7 +903,7 @@ namespace Revit.IFC.Export.Exporter
             }
          }
 
-         // If the override container paramater is detected, the LevelInfo and LocalPlacement will be overriden
+         // If the override container parameter is detected, the LevelInfo and LocalPlacement will be overridden
          IFCAnyHandle overrideContainer;
          ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, spatialElement, out overrideContainer);
 
@@ -907,72 +931,85 @@ namespace Revit.IFC.Export.Exporter
          IFCFile file = exporterIFC.GetFile();
 
          IFCAnyHandle spaceHnd = null;
-         using (IFCExportBodyParams extraParams = new IFCExportBodyParams())
+         using (IFCExportBodyParams extraParams = new())
          {
             IFCAnyHandle localPlacement = setter.LocalPlacement;
 
             extraParams.SetLocalPlacement(localPlacement);
             extraParams.PossibleExtrusionAxes = IFCExtrusionAxes.TryZ;
 
-            using (IFCTransaction transaction2 = new IFCTransaction(file))
+            using (IFCTransaction transaction2 = new(file))
             {
                ElementId catId = CategoryUtil.GetSafeCategoryId(spatialElement);
 
+               // 'SweptSolid' requires CurveLoops for its 'Body' geometry.
+               // 'BRep' requires CurveLoops for mandatory 'Footprint' geometry only.
                IFCAnyHandle repHnd = null;
-               if (geomElem != null)
+               SpatialElementBoundaryOptions options = GetSpatialElementBoundaryOptions(spatialElement);
+
+               try
                {
-                  BodyExporterOptions bodyExporterOptions = new BodyExporterOptions(true, ExportOptionsCache.ExportTessellationLevel.Medium);
+                  curveLoops = ExporterIFCUtils.GetRoomBoundaryAsCurveLoopArray(spatialElement, options, true);
+                  if (curveLoops == null || curveLoops.Count == 0)
+                     return null;
+               }
+               catch
+               {
+                  return null;
+               }
+
+               double elevation = spatialElement.Level?.Elevation ?? 0.0;
+               ParameterUtil.GetDoubleValueFromElement(spatialElement, BuiltInParameter.ROOM_LOWER_OFFSET, out double bottomOffset);
+               double relativeBaseElevation = GetLevelRelativeBaseElevation(spatialElement); 
+
+               XYZ orig = new(0, 0, elevation + bottomOffset + relativeBaseElevation);
+               Transform lcs = Transform.CreateTranslation(orig); // room calculated as level offset.
+
+               // Attempt 1:  'SweptSolid' IfcShapeRepresentation (with a 'BoudingBox').
+               // For Use2DRoomBoundaryForRoomVolumeCreation no Bounding Box will be created.
+               bool tryCreateExtrudedShapeFirst = ExporterCacheManager.ExportOptionsCache.Use2DRoomBoundaryForRoomVolumeCreation || geomElem == null;
+               if (tryCreateExtrudedShapeFirst)
+               {
+                  repHnd = CreateExtrudedShape(exporterIFC, file, spatialElement, geomElem, curveLoops, scaledRoomHeight, lcs, catId);
+               }
+
+               // Attempt 2:  'BRep' IfcShapeRepresentation and 'Footprint' IfcShapeRepresentation.
+               // This will not run for Use2DRoomBoundaryForRoomVolumeCreation advanced option.
+               if ((repHnd == null) && (geomElem != null))
+               {
+                  // Attempt to create Body Geometry for IfcSpace.
+                  BodyData bodyData;
+                  BodyExporterOptions bodyExporterOptions = new(true, ExportOptionsCache.ExportTessellationLevel.Medium);
                   repHnd = RepresentationUtil.CreateAppropriateProductDefinitionShape(exporterIFC, spatialElement,
-                      catId, geomElem, bodyExporterOptions, null, extraParams, false);
-                  if (IFCAnyHandleUtil.IsNullOrHasNoValue(repHnd))
+                      catId, geomElem, bodyExporterOptions, null, extraParams, out bodyData, false);
+
+                  if (!IFCAnyHandleUtil.IsNullOrHasNoValue(repHnd))
                   {
-                     repHnd = null;
-                     extraParams.ClearOpenings();
+                     if (bodyData.RepresentationHnd == null)
+                     {
+                        repHnd = null;
+                     }
+                     else if (bodyData.ShapeRepresentationType == ShapeRepresentationType.Brep)
+                     {
+                        FootPrintInfo fInfo = new(curveLoops, lcs);
+                        IFCAnyHandle footprintShapeRep = fInfo.CreateFootprintShapeRepresentation(exporterIFC);
+                        List<IFCAnyHandle> representations = [ footprintShapeRep ];
+                        IFCAnyHandleUtil.AddRepresentations(repHnd, representations);
+                     }
                   }
                }
 
-               if (repHnd == null)
+               // Attempt 3 (final fallback): Try 'SweptSolid' using the CurveLoops, forcing the Use2DRoomBoundaryForRoomVolumeCreation option.
+               // If the Use2DRoomBoundaryForRoomVolumeCreation was already set, this was already done for attempt 1, so there is no need to  do it again here.
+               // Also the CurveLoops were used to build the FootPrint, so this should be equivalent to using any 'FootPrint' alternate representation.
+               if ((repHnd == null) && !tryCreateExtrudedShapeFirst)
                {
-                  SpatialElementBoundaryOptions options = GetSpatialElementBoundaryOptions(spatialElement);
-
-                  try
-                  {
-                     curveLoops = ExporterIFCUtils.GetRoomBoundaryAsCurveLoopArray(spatialElement, options, true);
-                     if (curveLoops == null || curveLoops.Count == 0)
-                        return null;
-                  }
-                  catch
-                  {
-                     return null;
-                  }
-
-                  double bottomOffset;
-                  ParameterUtil.GetDoubleValueFromElement(spatialElement, BuiltInParameter.ROOM_LOWER_OFFSET, out bottomOffset);
-
-                  double elevation = spatialElement.Level?.Elevation ?? 0.0;
-                  XYZ orig = new XYZ(0, 0, elevation + bottomOffset);
-                  Transform lcs = Transform.CreateTranslation(orig); // room calculated as level offset.
-
-                  IFCAnyHandle shapeRep = ExtrusionExporter.CreateExtrudedSolidFromCurveLoop(exporterIFC, null, curveLoops, lcs, XYZ.BasisZ, scaledRoomHeight, true, out _);
-                  if (IFCAnyHandleUtil.IsNullOrHasNoValue(shapeRep))
-                     return null;
-
-                  // Spaces shouldn't have styled items.
-                  HashSet<IFCAnyHandle> bodyItems = new HashSet<IFCAnyHandle>() { shapeRep };
-
-                  IFCAnyHandle contextOfItems = ExporterCacheManager.Get3DContextHandle(IFCRepresentationIdentifier.Body);
-                  shapeRep = RepresentationUtil.CreateSweptSolidRep(exporterIFC, spatialElement, catId, contextOfItems, bodyItems, null, null);
-                  IList<IFCAnyHandle> shapeReps = new List<IFCAnyHandle>() { shapeRep };
-
-                  IFCAnyHandle boundingBoxRep = BoundingBoxExporter.ExportBoundingBox(exporterIFC, geomElem, Transform.Identity);
-                  if (boundingBoxRep != null)
-                     shapeReps.Add(boundingBoxRep);
-
-                  repHnd = IFCInstanceExporter.CreateProductDefinitionShape(file, null, null, shapeReps);
+                  repHnd = CreateExtrudedShape(exporterIFC, file, spatialElement, geomElem,
+                     curveLoops, scaledRoomHeight, lcs, catId);
                }
 
                if (ParameterUtil.GetDoubleValueFromElement(spatialElement, BuiltInParameter.ROOM_AREA, out dArea) != null)
-                  dArea = UnitUtil.ScaleArea(dArea);
+               dArea = UnitUtil.ScaleArea(dArea);
 
                extraParams.ScaledHeight = scaledRoomHeight;
                extraParams.ScaledArea = dArea;
@@ -1041,6 +1078,28 @@ namespace Revit.IFC.Export.Exporter
             CreateCOBIESpaceClassifications(file, spaceHnd, spatialElement);
 
          return spaceHnd;
+      }
+
+      /// <summary>
+      /// Gets the level relative base elevation.
+      /// </summary>
+      /// <param name="spatialElement">The spatial element.</param>
+      /// <returns>The level relative base elevation.</returns>
+      static double GetLevelRelativeBaseElevation(SpatialElement spatialElement)
+      {
+         ElementType levelType = spatialElement.Document?.GetElement(spatialElement.Level.GetTypeId()) as ElementType;
+         Parameter elevBaseParam = levelType?.get_Parameter(BuiltInParameter.LEVEL_RELATIVE_BASE_TYPE);
+         int elevBase = elevBaseParam?.AsInteger() ?? -1;
+
+         // 0 = Project Base Point, 1 = Survey Point
+         if (elevBase != 0 && elevBase != 1)
+            return 0.0;
+
+         BasePoint elevBasePoint = (elevBase == 0) ? BasePoint.GetProjectBasePoint(spatialElement.Document)
+            : BasePoint.GetSurveyPoint(spatialElement.Document);
+
+         return (elevBase == 0) ? elevBasePoint?.Position?.Z ?? 0.0
+            : (elevBasePoint?.Position?.Z ?? 0.0) - (elevBasePoint?.SharedPosition?.Z ?? 0.0);
       }
 
       /// <summary>

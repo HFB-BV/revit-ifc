@@ -59,6 +59,26 @@ namespace Revit.IFC.Export.Utility
             return null;
          }
       }
+
+      /// <summary>
+      /// A function to determine if configuration settings suggest exporting the element as parts.
+      /// </summary>
+      /// <param name="layerCount">The number of layers</param>
+      /// <returns>False if we shouldn't export parts, true if further checks don't restrict it.</returns>
+      public static bool ShouldExportPartsForRV(int layerCount)
+      {
+         if (ExporterCacheManager.ExportOptionsCache.ExportParts)
+            return true;
+
+         if (layerCount < 2)
+            return false;
+
+         if (ExporterCacheManager.ExportOptionsCache.ExchangeRequirement != KnownERNames.Structural)
+            return false;
+
+         return ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView ||
+            ExporterCacheManager.ExportOptionsCache.ExportAs4x3ReferenceView;
+      }
       private static void Union<T>(ref IList<T> lList, IList<T> rList)
       {
          if (rList == null || rList.Count() == 0)
@@ -1468,15 +1488,6 @@ namespace Revit.IFC.Export.Utility
             {
                exportInfo = new IFCExportInfoPair(prodHndType);
             }
-
-            // Need to handle backward compatibility for IFC2x3
-            if (IFCAnyHandleUtil.IsTypeOf(prodHnd, IFCEntityType.IfcFurnishingElement)
-               && (ExporterCacheManager.ExportOptionsCache.ExportAs2x3 || ExporterCacheManager.ExportOptionsCache.ExportAs2x2))
-            {
-               IFCEntityType altProdHndType = IFCEntityType.UnKnown;
-               if (Enum.TryParse<IFCEntityType>("IfcFurnitureType", true, out altProdHndType))
-                  exportInfo.SetValue(prodHndType, altProdHndType, exportInfo.PredefinedType);
-            }
          }
          else if (IFCAnyHandleUtil.IsSubTypeOf(prodHnd, IFCEntityType.IfcTypeObject))
          {
@@ -1489,15 +1500,6 @@ namespace Revit.IFC.Export.Utility
             else
             {
                exportInfo.SetByType(prodHndType);
-            }
-
-            // Need to handle backward compatibility for IFC2x3
-            if (IFCAnyHandleUtil.IsTypeOf(prodHnd, IFCEntityType.IfcFurnitureType)
-               && (ExporterCacheManager.ExportOptionsCache.ExportAs2x3 || ExporterCacheManager.ExportOptionsCache.ExportAs2x2))
-            {
-               IFCEntityType altProdHndType = IFCEntityType.UnKnown;
-               if (Enum.TryParse<IFCEntityType>("IfcFurnishingElement", true, out altProdHndType))
-                  exportInfo.SetValue(prodHndType, altProdHndType, exportInfo.PredefinedType);
             }
          }
          else
@@ -2354,6 +2356,23 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
+      /// Gets the export entity and predefined type information as reported by built-in parameters.
+      /// </summary>
+      /// <param name="element">The element.</param>
+      /// <param name="restrictedGroup">The base class of the allowed entity instances.</param>
+      /// <returns>The IFCExportInfoPair.</returns>
+      public static IFCExportInfoPair GetExportTypeFromParameters(Element element, IFCEntityType restrictedGroup)
+      {
+         IFCExportInfoPair exportType = GetIFCExportElementParameterInfo(element, restrictedGroup);
+
+         string pdefFromParam = GetExportTypeFromTypeParameter(element, null);
+         if (!string.IsNullOrEmpty(pdefFromParam))
+            exportType.PredefinedType = pdefFromParam;
+
+         return exportType;
+      }
+
+      /// <summary>
       /// Get export entity and predefinedType from symbolClassName. Generally it should come from
       /// the built-in parameters (for symbolClassName)
       /// </summary>
@@ -3121,7 +3140,9 @@ namespace Revit.IFC.Export.Utility
          if (exportParts)
             return ExportPartAs.Part;
 
-         if (ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView && !exportParts && layersOrPartsCount > 1)
+         if ((ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView ||
+            ExporterCacheManager.ExportOptionsCache.ExportAs4x3ReferenceView) &&
+            !exportParts && layersOrPartsCount > 1)
          {
             return ExportPartAs.ShapeAspect;
          }
@@ -3161,7 +3182,8 @@ namespace Revit.IFC.Export.Utility
       /// <returns>true - if parts have been successfully created. false - is creation of parts is not possible.</returns>
       public static bool CreateParts(Element element, int layersCount, ref GeometryElement geometryElement)
       {
-         if (!ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView)
+         if (!(ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView ||
+            ExporterCacheManager.ExportOptionsCache.ExportAs4x3ReferenceView))
             return false;
 
          ExportPartAs exportPartAs = ShouldExportByComponentsOrParts(element, layersCount);
@@ -3218,5 +3240,17 @@ namespace Revit.IFC.Export.Utility
       /// <param name="element">Element to check.</param>
       /// <returns>True if non-null Element is part of Assembly, false otherwise.</returns>
       public static bool IsContainedInAssembly(Element element) => ((element?.AssemblyInstanceId ?? ElementId.InvalidElementId) != ElementId.InvalidElementId);
+
+      /// <summary>
+      /// Get the view containing the geometry for this element.
+      /// </summary>
+      /// <param name="element">The element.</param>
+      /// <returns>The associated view, if any.</returns>
+      public static View GetViewForElementGeometry(Element element)
+      {
+         return ExporterCacheManager.ExportOptionsCache.UseActiveViewGeometry ?
+            ExporterCacheManager.ExportOptionsCache.ActiveView :
+            element.Document.GetElement(element.OwnerViewId) as View;
+      }
    }
 }
